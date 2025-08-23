@@ -112,8 +112,10 @@ export default function PetCareScreen({
 
   const [showBackpack, setShowBackpack] = useState(false);
   const [showShop, setShowShop] = useState(false);
-  const [customAmount, setCustomAmount] = useState('');
+  // 已拆分為 depositAmount / withdrawAmount
   const [savedMoney, setSavedMoney] = useState(0);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
   
   // 記帳相關狀態（MVP）
   const [showAccounting, setShowAccounting] = useState(false);
@@ -290,9 +292,66 @@ export default function PetCareScreen({
   const [showAccountingPage, setShowAccountingPage] = useState(false);
   const [showSavingsPage, setShowSavingsPage] = useState(false);
   const [showGoalEditPage, setShowGoalEditPage] = useState(false);
+  const [showDreamSavingsPage, setShowDreamSavingsPage] = useState(false);
   const [allocationMode, setAllocationMode] = useState('auto'); // 'auto' | 'manual'
   const [selectedAllocationGoal, setSelectedAllocationGoal] = useState('shortTerm'); // 'shortTerm' | 'mediumTerm' | 'longTerm'
-  const [goalEdits, setGoalEdits] = useState({ shortTerm: {}, mediumTerm: {}, longTerm: {} });
+  const [goalEdits, setGoalEdits] = useState({});
+  const [dreamPlans, setDreamPlans] = useState([]);
+  const [dreamForm, setDreamForm] = useState({ title: '', targetText: '', startDateText: '', endDateText: '' });
+  const [selectedDreamPlanId, setSelectedDreamPlanId] = useState(null);
+  const [selectedWithdrawDreamPlanId, setSelectedWithdrawDreamPlanId] = useState(null);
+  const [dreamPlanInputs, setDreamPlanInputs] = useState({});
+  const [editingPlanId, setEditingPlanId] = useState(null);
+  const [editingPlanForm, setEditingPlanForm] = useState({ title: '', targetText: '', startDateText: '', endDateText: '' });
+
+  const parseDateText = (text) => {
+    if (!text || typeof text !== 'string') return null;
+    const parts = text.split('/');
+    if (parts.length !== 3) return null;
+    const y = parseInt(parts[0]);
+    const m = parseInt(parts[1]);
+    const d = parseInt(parts[2]);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d);
+  };
+
+  const calculateDaysLeftFromText = (endDateText) => {
+    const end = parseDateText(endDateText);
+    if (!end) return null;
+    const now = new Date();
+    const oneDay = 24 * 60 * 60 * 1000;
+    const diff = Math.ceil((end.setHours(0,0,0,0) - now.setHours(0,0,0,0)) / oneDay);
+    return diff;
+  };
+
+  const calculateSuggestedDaily = (current, target, endDateText) => {
+    if (!target || target <= 0) return null;
+    const daysLeft = calculateDaysLeftFromText(endDateText);
+    if (daysLeft === null || daysLeft <= 0) return null;
+    const remaining = Math.max(0, target - (current || 0));
+    if (remaining <= 0) return 0;
+    return Math.ceil(remaining / daysLeft);
+  };
+
+  const handleSaveMoneyToPlan = (amount, planId) => {
+    if (amount <= 0) {
+      Alert.alert('❌ 存錢失敗', '請輸入大於 0 的金額！');
+      return;
+    }
+    setSavedMoney(prev => prev + amount);
+    setDreamPlans(prev => prev.map(p => {
+      if (p.id !== planId) return p;
+      const previousCurrent = p.current || 0;
+      const nextCurrent = previousCurrent + amount;
+      const reached = p.target && previousCurrent < p.target && nextCurrent >= p.target;
+      if (reached) {
+        Alert.alert('🎉 目標達成！', `恭喜完成「${p.title}」目標！`, [{ text: '太棒了！', style: 'default' }]);
+      }
+      return { ...p, current: nextCurrent };
+    }));
+    setDreamPlanInputs(prev => ({ ...prev, [planId]: '' }));
+    Alert.alert('💰 存錢成功！', `已存入 ${amount} 元至「${(dreamPlans.find(p => p.id === planId) || {}).title || ''}」`, [{ text: '確定', style: 'default' }]);
+  };
   
   // 存錢目標相關狀態
   const [savingsGoals, setSavingsGoals] = useState({
@@ -399,67 +458,26 @@ export default function PetCareScreen({
       Alert.alert('❌ 存錢失敗', '請輸入大於 0 的金額！');
       return;
     }
+    if (!selectedDreamPlanId) {
+      Alert.alert('❌ 存錢失敗', '請先選擇一個夢想計畫');
+      return;
+    }
     
     setSavedMoney(prev => prev + amount);
     
-    setSavingsGoals(prev => {
-      const updated = { ...prev };
-
-      if (allocationMode === 'manual') {
-        const goalKey = selectedAllocationGoal;
-        const goal = updated[goalKey];
-        if (!goal.completed) {
-          const need = goal.target - goal.current;
-          const use = Math.min(amount, need);
-          goal.current += use;
-          if (goal.current >= goal.target) {
-            goal.completed = true;
-            Alert.alert('🎉 目標達成！', `恭喜完成${goal.name}！`, [{ text: '太棒了！', style: 'default' }]);
-          }
-        }
-        return updated;
+    // 若有選擇夢想計畫，將金額加到該計畫 current
+    const selectedPlan = dreamPlans.find(p => p.id === selectedDreamPlanId);
+    if (selectedPlan) {
+      const previousCurrent = selectedPlan.current || 0;
+      const nextCurrent = previousCurrent + amount;
+      const reached = selectedPlan.target && previousCurrent < selectedPlan.target && nextCurrent >= selectedPlan.target;
+      setDreamPlans(prev => prev.map(p => p.id === selectedDreamPlanId ? { ...p, current: nextCurrent } : p));
+      if (reached) {
+        Alert.alert('🎉 目標達成！', `恭喜完成「${selectedPlan.title}」目標！`, [{ text: '太棒了！', style: 'default' }]);
       }
-
-      // 自動分配：短 -> 中 -> 長
-      let remainingAmount = amount;
-
-      if (!updated.shortTerm.completed && remainingAmount > 0) {
-        const need = updated.shortTerm.target - updated.shortTerm.current;
-        const use = Math.min(remainingAmount, need);
-        updated.shortTerm.current += use;
-        remainingAmount -= use;
-        if (updated.shortTerm.current >= updated.shortTerm.target) {
-          updated.shortTerm.completed = true;
-          Alert.alert('🎉 短期目標達成！', `恭喜完成短期存錢目標！`, [{ text: '太棒了！', style: 'default' }]);
-        }
-      }
-
-      if (!updated.mediumTerm.completed && remainingAmount > 0) {
-        const need = updated.mediumTerm.target - updated.mediumTerm.current;
-        const use = Math.min(remainingAmount, need);
-        updated.mediumTerm.current += use;
-        remainingAmount -= use;
-        if (updated.mediumTerm.current >= updated.mediumTerm.target) {
-          updated.mediumTerm.completed = true;
-          Alert.alert('🎉 中期目標達成！', `恭喜完成中期存錢目標！`, [{ text: '太棒了！', style: 'default' }]);
-        }
-      }
-
-      if (!updated.longTerm.completed && remainingAmount > 0) {
-        const need = updated.longTerm.target - updated.longTerm.current;
-        const use = Math.min(remainingAmount, need);
-        updated.longTerm.current += use;
-        remainingAmount -= use;
-        if (updated.longTerm.current >= updated.longTerm.target) {
-          updated.longTerm.completed = true;
-          Alert.alert('🎉 長期目標達成！', `恭喜完成長期存錢目標！`, [{ text: '太棒了！', style: 'default' }]);
-        }
-      }
-      
-      return updated;
-    });
+    }
     
-    setCustomAmount('');
+    setDepositAmount('');
     setShowSavingsPage(false);
     Alert.alert('💰 存錢成功！', `成功存入 ${amount} 元！\n繼續努力存錢吧！`, [{ text: '確定', style: 'default' }]);
   };
@@ -470,12 +488,24 @@ export default function PetCareScreen({
       Alert.alert('❌ 取出失敗', '金額無效或儲蓄餘額不足！');
       return;
     }
+    if (!selectedWithdrawDreamPlanId) {
+      Alert.alert('❌ 取出失敗', '請先選擇一個夢想計畫');
+      return;
+    }
+    const plan = dreamPlans.find(p => p.id === selectedWithdrawDreamPlanId);
+    const current = plan ? (plan.current || 0) : 0;
+    if (!plan || amount > current) {
+      Alert.alert('❌ 取出失敗', '選定計畫的可取出金額不足！');
+      return;
+    }
     
     setSavedMoney(prev => prev - amount);
+    setDreamPlans(prev => prev.map(p => p.id === selectedWithdrawDreamPlanId ? { ...p, current: (p.current || 0) - amount } : p));
+    setWithdrawAmount('');
     
     Alert.alert(
       '💰 取出成功！',
-      `成功取出 ${amount} 元！`,
+      `已自「${plan.title}」取出 ${amount} 元！`,
       [{ text: '確定', style: 'default' }]
     );
   };
@@ -518,17 +548,19 @@ export default function PetCareScreen({
 
   // 設定存錢目標函數
   const setSavingsGoal = (goalType, target, days) => {
-    setSavingsGoals(prev => ({
-      ...prev,
-      [goalType]: {
-        ...prev[goalType],
-        target: parseInt(target),
-        days: parseInt(days),
-        deadline: new Date(Date.now() + parseInt(days) * 24 * 60 * 60 * 1000).toISOString(),
-        current: 0,
-        completed: false
-      }
-    }));
+    setSavingsGoals(prev => {
+      const parsedTarget = parseInt(target);
+      const parsedDays = parseInt(days);
+      const next = { ...prev };
+      const goal = next[goalType];
+      const nextDeadline = new Date(Date.now() + parsedDays * 24 * 60 * 60 * 1000).toISOString();
+      goal.target = parsedTarget;
+      goal.days = parsedDays;
+      goal.deadline = nextDeadline;
+      // 不重置 current，僅依據新 target 更新 completed 狀態
+      goal.completed = goal.current >= goal.target;
+      return next;
+    });
   };
   
   // 計算目標完成百分比
@@ -1534,7 +1566,7 @@ export default function PetCareScreen({
             <View style={{ width: 24 }} />
               </View>
               
-          <ScrollView style={styles.accountingContent} showsVerticalScrollIndicator={false}>
+          <ScrollView style={styles.accountingContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {/* 金額輸入 */}
             <View style={styles.accountingSection}>
               <Text style={styles.sectionTitle}>輸入金額</Text>
@@ -2305,6 +2337,30 @@ export default function PetCareScreen({
             <View style={styles.withdrawSection}>
               <Text style={[styles.withdrawSectionTitle, { color: '#FF9800' }]}>💰 存入功能</Text>
               <Text style={styles.withdrawSectionDescription}>當前儲蓄餘額：{savedMoney} 元</Text>
+              {dreamPlans.length > 0 && (
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={[styles.withdrawSectionDescription, { marginBottom: 6 }]}>選擇存入的夢想計畫：</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {dreamPlans.map(plan => (
+                      <TouchableOpacity
+                        key={plan.id}
+                        onPress={() => setSelectedDreamPlanId(plan.id)}
+                        style={{
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          borderRadius: 16,
+                          borderWidth: 1,
+                          borderColor: selectedDreamPlanId === plan.id ? '#1976D2' : '#E0E0E0',
+                          backgroundColor: selectedDreamPlanId === plan.id ? '#E3F2FD' : '#FFFFFF',
+                          marginRight: 8,
+                        }}
+                      >
+                        <Text style={{ color: selectedDreamPlanId === plan.id ? '#1976D2' : '#333' }}>{plan.title}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
               <View style={styles.withdrawCustomAmount}>
                 <Text style={styles.withdrawCustomAmountLabel}>存入金額：</Text>
                 <View style={styles.customAmountRow}>
@@ -2312,19 +2368,19 @@ export default function PetCareScreen({
                     style={styles.withdrawCustomAmountInput}
                     placeholder="輸入金額"
                     keyboardType="numeric"
-                    value={customAmount}
+                    value={depositAmount}
                     maxLength={6}
-                    onChangeText={(t) => setCustomAmount(t.replace(/[^0-9]/g,'').slice(0,6))}
+                    onChangeText={(t) => setDepositAmount(t.replace(/[^0-9]/g,'').slice(0,6))}
                     placeholderTextColor="#999"
                   />
                   <TouchableOpacity 
                     style={[
                       styles.withdrawCustomAmountButton,
-                      { backgroundColor: (!customAmount || parseInt(customAmount) <= 0) ? '#E0E0E0' : '#FF9800' },
-                      (!customAmount || parseInt(customAmount) <= 0) && styles.disabledButton
+                      { backgroundColor: (!depositAmount || parseInt(depositAmount) <= 0) ? '#E0E0E0' : '#FF9800' },
+                      (!depositAmount || parseInt(depositAmount) <= 0) && styles.disabledButton
                     ]}
-                    onPress={() => handleSaveMoney(parseInt(customAmount))}
-                    disabled={!customAmount || parseInt(customAmount) <= 0}
+                    onPress={() => handleSaveMoney(parseInt(depositAmount))}
+                    disabled={!depositAmount || parseInt(depositAmount) <= 0}
                   >
                     <Text style={styles.withdrawCustomAmountButtonText}>存入</Text>
                   </TouchableOpacity>
@@ -2335,6 +2391,30 @@ export default function PetCareScreen({
             <View style={styles.withdrawSection}>
               <Text style={styles.withdrawSectionTitle}>💸 取出功能</Text>
               <Text style={styles.withdrawSectionDescription}>當前儲蓄餘額：{savedMoney} 元</Text>
+              {dreamPlans.length > 0 && (
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={[styles.withdrawSectionDescription, { marginBottom: 6 }]}>選擇取出的夢想計畫：</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {dreamPlans.map(plan => (
+                      <TouchableOpacity
+                        key={plan.id}
+                        onPress={() => setSelectedWithdrawDreamPlanId(plan.id)}
+                        style={{
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          borderRadius: 16,
+                          borderWidth: 1,
+                          borderColor: selectedWithdrawDreamPlanId === plan.id ? '#1976D2' : '#E0E0E0',
+                          backgroundColor: selectedWithdrawDreamPlanId === plan.id ? '#E3F2FD' : '#FFFFFF',
+                          marginRight: 8,
+                        }}
+                      >
+                        <Text style={{ color: selectedWithdrawDreamPlanId === plan.id ? '#1976D2' : '#333' }}>{plan.title}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
               <View style={styles.withdrawCustomAmount}>
                 <Text style={styles.withdrawCustomAmountLabel}>取出金額：</Text>
                 <View style={styles.customAmountRow}>
@@ -2342,42 +2422,49 @@ export default function PetCareScreen({
                     style={styles.withdrawCustomAmountInput}
                     placeholder="輸入金額"
                     keyboardType="numeric"
-                    value={customAmount}
+                    value={withdrawAmount}
                     maxLength={6}
-                    onChangeText={(t) => setCustomAmount(t.replace(/[^0-9]/g,'').slice(0,6))}
+                    onChangeText={(t) => setWithdrawAmount(t.replace(/[^0-9]/g,'').slice(0,6))}
                     placeholderTextColor="#999"
                   />
                   <TouchableOpacity 
-                    style={[styles.withdrawCustomAmountButton, (!customAmount || parseInt(customAmount) <= 0 || parseInt(customAmount) > savedMoney) && styles.disabledButton]}
-                    onPress={() => handleWithdrawMoney(parseInt(customAmount))}
-                    disabled={!customAmount || parseInt(customAmount) <= 0 || parseInt(customAmount) > savedMoney}
+                    style={[styles.withdrawCustomAmountButton, (!withdrawAmount || parseInt(withdrawAmount) <= 0 || parseInt(withdrawAmount) > savedMoney) && styles.disabledButton]}
+                    onPress={() => handleWithdrawMoney(parseInt(withdrawAmount))}
+                    disabled={!withdrawAmount || parseInt(withdrawAmount) <= 0 || parseInt(withdrawAmount) > savedMoney}
                   >
                     <Text style={styles.withdrawCustomAmountButtonText}>取出</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
-            {/* 目標進度（摘要） */}
+            {/* 目標進度（夢想存錢） */}
             <View style={styles.accountingSection}>
               <Text style={styles.sectionTitle}>目標進度</Text>
-              {(['shortTerm','mediumTerm','longTerm']).map(key => (
-                <View key={key} style={{ marginBottom: 10 }}>
-                  <Text style={{ fontSize: 14, color: '#424242', marginBottom: 6 }}>
-                    {savingsGoals[key].name}：{savingsGoals[key].current} / {savingsGoals[key].target} 元
-                  </Text>
-                  <View style={styles.goalProgressBar}>
-                    <View style={[styles.goalProgressFill, { width: `${calculateGoalProgress(savingsGoals[key].current, savingsGoals[key].target)}%` }]} />
-                  </View>
-                  <Text style={{ fontSize: 12, color: '#757575', marginTop: 4 }}>
-                    截止 {new Date(savingsGoals[key].deadline).toLocaleDateString()}，剩餘 {calculateDaysLeft(savingsGoals[key].deadline)} 天
-                  </Text>
+              {dreamPlans.length === 0 && (
+                <Text style={{ fontSize: 14, color: '#757575', marginBottom: 10 }}>尚未建立夢想存錢計畫，點擊下方「夢想存錢」新增吧！</Text>
+              )}
+              {dreamPlans.map(plan => (
+                <View key={plan.id} style={{ marginBottom: 12 }}>
+                  <Text style={{ fontSize: 14, color: '#424242', marginBottom: 6 }}>⭐ {plan.title}</Text>
+                  {!!plan.target ? (
+                    <>
+                      <View style={styles.goalProgressBar}>
+                        <View style={[styles.goalProgressFill, { width: `${calculateGoalProgress(plan.current || 0, plan.target)}%` }]} />
+                      </View>
+                      <Text style={{ fontSize: 12, color: '#757575', marginTop: 4 }}>
+                        進度：{plan.current || 0} / {plan.target} 元
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={{ fontSize: 12, color: '#9E9E9E' }}>未設定目標金額</Text>
+                  )}
                 </View>
               ))}
               <TouchableOpacity 
-                style={styles.viewGoalsButton}
-                onPress={() => setShowGoalEditPage(true)}
+                style={[styles.viewGoalsButton, { backgroundColor: '#1976D2' }]}
+                onPress={() => setShowDreamSavingsPage(true)}
               >
-                <Text style={styles.viewGoalsButtonText}>🎯 編輯目標</Text>
+                <Text style={styles.viewGoalsButtonText}>⭐ 夢想存錢</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -2397,7 +2484,7 @@ export default function PetCareScreen({
             <Text style={styles.goalEditTitle}>編輯存錢目標</Text>
           </View>
           
-          <ScrollView style={styles.goalEditContent}>
+          <ScrollView style={styles.goalEditContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {/* 短期目標編輯 */}
             <View style={styles.goalEditForm}>
               <Text style={styles.goalEditLabel}>⏰ 短期目標</Text>
@@ -2514,6 +2601,186 @@ export default function PetCareScreen({
                 截止日期：{new Date(savingsGoals.longTerm.deadline).toLocaleDateString()}
               </Text>
             </View>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* 夢想存錢頁面 */}
+      {showDreamSavingsPage && (
+        <View style={styles.dreamPage}>
+          <View style={styles.dreamHeader}>
+            <TouchableOpacity 
+              style={{ padding: 8 }}
+              onPress={() => setShowDreamSavingsPage(false)}
+            >
+              <Ionicons name="arrow-back" size={24} color="white" />
+            </TouchableOpacity>
+            <Text style={styles.dreamTitle}>夢想存錢</Text>
+          </View>
+
+          <ScrollView style={styles.dreamContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <View style={styles.dreamForm}>
+              <Text style={styles.dreamLabel}>計畫標題（必填）</Text>
+              <TextInput
+                style={styles.dreamInput}
+                placeholder="例如：旅行基金"
+                value={editingPlanId ? editingPlanForm.title : dreamForm.title}
+                onChangeText={(t) => editingPlanId ? setEditingPlanForm(prev => ({ ...prev, title: t })) : setDreamForm(prev => ({ ...prev, title: t }))}
+                placeholderTextColor="#999"
+                maxLength={30}
+              />
+
+              <Text style={styles.dreamLabel}>目標金額（選填）</Text>
+              <TextInput
+                style={styles.dreamInput}
+                placeholder="例如：30000"
+                value={editingPlanId ? editingPlanForm.targetText : dreamForm.targetText}
+                onChangeText={(t) => {
+                  const v = t.replace(/[^0-9]/g,'').slice(0,9);
+                  if (editingPlanId) setEditingPlanForm(prev => ({ ...prev, targetText: v }));
+                  else setDreamForm(prev => ({ ...prev, targetText: v }));
+                }}
+                placeholderTextColor="#999"
+                keyboardType="numeric"
+              />
+
+              <Text style={styles.dreamLabel}>起始日期（選填，YYYY/MM/DD）</Text>
+              <TextInput
+                style={styles.dreamInput}
+                placeholder="例如：2025/01/01"
+                value={editingPlanId ? editingPlanForm.startDateText : dreamForm.startDateText}
+                onChangeText={(t) => editingPlanId ? setEditingPlanForm(prev => ({ ...prev, startDateText: t })) : setDreamForm(prev => ({ ...prev, startDateText: t }))}
+                placeholderTextColor="#999"
+              />
+
+              <Text style={styles.dreamLabel}>結束日期（選填，YYYY/MM/DD）</Text>
+              <TextInput
+                style={styles.dreamInput}
+                placeholder="例如：2025/12/31"
+                value={editingPlanId ? editingPlanForm.endDateText : dreamForm.endDateText}
+                onChangeText={(t) => editingPlanId ? setEditingPlanForm(prev => ({ ...prev, endDateText: t })) : setDreamForm(prev => ({ ...prev, endDateText: t }))}
+                placeholderTextColor="#999"
+              />
+
+              <TouchableOpacity
+                style={styles.dreamCreateButton}
+                onPress={() => {
+                  const title = dreamForm.title.trim();
+                  if (!title) {
+                    Alert.alert('❌ 建立失敗', '請輸入計畫標題');
+                    return;
+                  }
+                  const target = dreamForm.targetText ? parseInt(dreamForm.targetText) : null;
+                  const startDateText = dreamForm.startDateText ? dreamForm.startDateText.trim() : '';
+                  const endDateText = dreamForm.endDateText ? dreamForm.endDateText.trim() : '';
+                  if (editingPlanId) {
+                    setDreamPlans(prev => prev.map(p => p.id === editingPlanId ? {
+                      ...p,
+                      title,
+                      target,
+                      startDateText,
+                      endDateText,
+                    } : p));
+                    setEditingPlanId(null);
+                    setEditingPlanForm({ title: '', targetText: '', startDateText: '', endDateText: '' });
+                    Alert.alert('✅ 已更新', '已更新夢想存錢計畫');
+                  } else {
+                    const newPlan = {
+                      id: Date.now(),
+                      title,
+                      target,
+                      current: 0,
+                      startDateText,
+                      endDateText,
+                      createdAt: new Date().toISOString(),
+                    };
+                    setDreamPlans(prev => [newPlan, ...prev]);
+                    Alert.alert('✅ 已建立', '已新增夢想存錢計畫');
+                  }
+                  setDreamForm({ title: '', targetText: '', startDateText: '', endDateText: '' });
+                }}
+              >
+                <Text style={styles.dreamCreateButtonText}>{editingPlanId ? '更新計畫' : '建立計畫'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {dreamPlans.length > 0 && (
+              <View style={{ marginTop: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#1976D2', marginBottom: 10 }}>我的夢想清單</Text>
+                {dreamPlans.map(plan => (
+                  <View key={plan.id} style={styles.dreamPlanCard}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.dreamPlanTitle}>⭐ {plan.title}</Text>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity onPress={() => {
+                          setEditingPlanId(plan.id);
+                          setEditingPlanForm({
+                            title: plan.title,
+                            targetText: plan.target ? String(plan.target) : '',
+                            startDateText: plan.startDateText || '',
+                            endDateText: plan.endDateText || '',
+                          });
+                        }}>
+                          <Text style={{ color: '#1976D2', fontWeight: '700' }}>編輯</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => {
+                          Alert.alert('刪除確認', `確定刪除「${plan.title}」？`, [
+                            { text: '取消', style: 'cancel' },
+                            { text: '刪除', style: 'destructive', onPress: () => setDreamPlans(prev => prev.filter(p => p.id !== plan.id)) }
+                          ]);
+                        }}>
+                          <Text style={{ color: '#D32F2F', fontWeight: '700' }}>刪除</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {!!plan.target && (
+                      <Text style={styles.dreamPlanMeta}>目標金額：{plan.target} 元</Text>
+                    )}
+                    {(plan.startDateText || plan.endDateText) && (
+                      <Text style={styles.dreamPlanMeta}>
+                        期間：{plan.startDateText || '—'} ~ {plan.endDateText || '—'}
+                      </Text>
+                    )}
+
+                    {!!plan.target && (
+                      <>
+                        <View style={styles.goalProgressBar}>
+                          <View style={[styles.goalProgressFill, { width: `${calculateGoalProgress(plan.current || 0, plan.target)}%` }]} />
+                        </View>
+                        <Text style={{ fontSize: 12, color: '#757575', marginTop: 4 }}>進度：{plan.current || 0} / {plan.target} 元</Text>
+                        {(() => { const s = calculateSuggestedDaily(plan.current || 0, plan.target, plan.endDateText); return s !== null ? (
+                          <Text style={{ fontSize: 12, color: '#1976D2', marginTop: 2 }}>建議每日至少存：{s} 元</Text>
+                        ) : null; })()}
+                      </>
+                    )}
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                      <TextInput
+                        style={[styles.dreamInput, { flex: 1, marginBottom: 0 }]}
+                        placeholder="快速存入金額"
+                        value={dreamPlanInputs[plan.id] ?? ''}
+                        onChangeText={(t) => setDreamPlanInputs(prev => ({ ...prev, [plan.id]: t.replace(/[^0-9]/g,'').slice(0,9) }))}
+                        keyboardType="numeric"
+                        placeholderTextColor="#999"
+                      />
+                      <TouchableOpacity
+                        style={[styles.dreamCreateButton, { marginTop: 0, marginLeft: 8 }]}
+                        onPress={() => {
+                          const v = dreamPlanInputs[plan.id];
+                          const amount = v ? parseInt(v) : 0;
+                          handleSaveMoneyToPlan(amount, plan.id);
+                        }}
+                      >
+                        <Text style={styles.dreamCreateButtonText}>存入</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <Text style={[styles.dreamPlanMeta, { color: '#9E9E9E', marginTop: 6 }]}>建立於 {new Date(plan.createdAt).toLocaleDateString()}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </ScrollView>
         </View>
       )}
@@ -3030,7 +3297,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 20,
     elevation: 10,
-  }, 
+  },
   piggyBankHeader: {
     alignItems: 'center',
     marginBottom: 25,
@@ -3299,8 +3566,110 @@ const styles = StyleSheet.create({
   
   // 存錢目標模態框樣式
   goalEditPage: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'white',
+    zIndex: 1000,
+  },
+  dreamPage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'white',
+    zIndex: 1000,
+  },
+  dreamHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 40,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    backgroundColor: '#1976D2',
+  },
+  dreamTitle: {
+    flex: 1,
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: 'white',
+    marginLeft: 16,
+  },
+  dreamContent: {
+    flex: 1,
+    padding: 20,
+  },
+  dreamForm: {
+    backgroundColor: '#F8FBFF',
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#E3F2FD',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  dreamLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 8,
+  },
+  dreamInput: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  dreamCreateButton: {
+    backgroundColor: '#1976D2',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  dreamCreateButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  dreamPlanCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  dreamPlanTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 6,
+  },
+  dreamPlanMeta: {
+    fontSize: 14,
+    color: '#424242',
+    marginBottom: 4,
   },
   goalEditHeader: {
     flexDirection: 'row',
