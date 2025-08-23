@@ -3030,7 +3030,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 20,
     elevation: 10,
-  },
+  }, 
   piggyBankHeader: {
     alignItems: 'center',
     marginBottom: 25,
