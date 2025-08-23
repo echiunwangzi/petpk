@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "我的 Expo 應用程式",
+    "slug": "my-expo-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "A/*.png",
+      "B/*.png",
+      "assets/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.myexpoapp.app"
+    },
+    "android": {
+      "package": "com.myexpoapp.app"
+    },
+    "web": {
+    },
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    },
+    "owner": "your-expo-username"
+  }
+} 
