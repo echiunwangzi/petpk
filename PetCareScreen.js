@@ -16,6 +16,7 @@ import {
   PanResponder,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -29,6 +30,40 @@ export default function PetCareScreen({
   petQuoteTriggered,
   setPetQuoteTriggered
 }) {
+  // 持久化鍵值
+  const PERSIST_KEYS = {
+    transactions: 'PERSIST_TRANSACTIONS',
+    savedMoney: 'PERSIST_SAVED_MONEY',
+    dreamPlans: 'PERSIST_DREAM_PLANS',
+    selectedDreamPlanId: 'PERSIST_SELECTED_DREAM_PLAN_ID',
+    selectedWithdrawDreamPlanId: 'PERSIST_SELECTED_WITHDRAW_DREAM_PLAN_ID',
+    petStatus: 'PERSIST_PET_STATUS',
+    dailyCounters: 'PERSIST_DAILY_COUNTERS',
+    walkStreak: 'PERSIST_WALK_STREAK',
+    backpack: 'PERSIST_BACKPACK',
+    savingsGoals: 'PERSIST_SAVINGS_GOALS',
+    accountingSearchText: 'PERSIST_ACCOUNTING_SEARCH_TEXT',
+    accountingSelectedMonth: 'PERSIST_ACCOUNTING_SELECTED_MONTH',
+    accountingSelectedCategories: 'PERSIST_ACCOUNTING_SELECTED_CATEGORIES',
+  };
+
+  const safeParseJson = (text, fallback = null) => {
+    try {
+      if (text === null || text === undefined) return fallback;
+      return JSON.parse(text);
+    } catch (e) {
+      console.warn('JSON parse error:', e);
+      return fallback;
+    }
+  };
+
+  const saveJson = async (key, value) => {
+    try {
+      await AsyncStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      console.warn('AsyncStorage save error for', key, e);
+    }
+  };
   // 基本狀態
   const [petStatus, setPetStatus] = useState({
     hunger: 30,
@@ -408,8 +443,96 @@ export default function PetCareScreen({
 
   // 簡化圖片載入 - 立即載入
   useEffect(() => {
+    // 啟動時載入持久化資料
+    (async () => {
+      try {
+        const entries = await AsyncStorage.multiGet([
+          PERSIST_KEYS.transactions,
+          PERSIST_KEYS.savedMoney,
+          PERSIST_KEYS.dreamPlans,
+          PERSIST_KEYS.selectedDreamPlanId,
+          PERSIST_KEYS.selectedWithdrawDreamPlanId,
+          PERSIST_KEYS.petStatus,
+          PERSIST_KEYS.dailyCounters,
+          PERSIST_KEYS.walkStreak,
+          PERSIST_KEYS.backpack,
+          PERSIST_KEYS.savingsGoals,
+          PERSIST_KEYS.accountingSearchText,
+          PERSIST_KEYS.accountingSelectedMonth,
+          PERSIST_KEYS.accountingSelectedCategories,
+        ]);
+        const map = Object.fromEntries(entries);
+
+        const storedTransactions = safeParseJson(map[PERSIST_KEYS.transactions], null);
+        if (storedTransactions) setTransactions(storedTransactions);
+
+        const storedSavedMoney = safeParseJson(map[PERSIST_KEYS.savedMoney], null);
+        if (storedSavedMoney !== null) setSavedMoney(storedSavedMoney);
+
+        const storedDreamPlans = safeParseJson(map[PERSIST_KEYS.dreamPlans], null);
+        if (storedDreamPlans) setDreamPlans(storedDreamPlans);
+
+        const storedSelectedDreamPlanId = safeParseJson(map[PERSIST_KEYS.selectedDreamPlanId], null);
+        if (storedSelectedDreamPlanId !== null && storedSelectedDreamPlanId !== undefined) {
+          setSelectedDreamPlanId(storedSelectedDreamPlanId);
+        }
+
+        const storedSelectedWithdrawDreamPlanId = safeParseJson(map[PERSIST_KEYS.selectedWithdrawDreamPlanId], null);
+        if (storedSelectedWithdrawDreamPlanId !== null && storedSelectedWithdrawDreamPlanId !== undefined) {
+          setSelectedWithdrawDreamPlanId(storedSelectedWithdrawDreamPlanId);
+        }
+
+        const storedPetStatus = safeParseJson(map[PERSIST_KEYS.petStatus], null);
+        if (storedPetStatus) setPetStatus(storedPetStatus);
+
+        const storedDailyCounters = safeParseJson(map[PERSIST_KEYS.dailyCounters], null);
+        if (storedDailyCounters) setDailyCounters(storedDailyCounters);
+
+        const storedWalkStreak = safeParseJson(map[PERSIST_KEYS.walkStreak], null);
+        if (storedWalkStreak) setWalkStreak(storedWalkStreak);
+
+        const storedBackpack = safeParseJson(map[PERSIST_KEYS.backpack], null);
+        if (storedBackpack) setBackpack(storedBackpack);
+
+        const storedSavingsGoals = safeParseJson(map[PERSIST_KEYS.savingsGoals], null);
+        if (storedSavingsGoals) setSavingsGoals(storedSavingsGoals);
+
+        const storedSearchText = safeParseJson(map[PERSIST_KEYS.accountingSearchText], null);
+        if (typeof storedSearchText === 'string') setSearchText(storedSearchText);
+
+        const storedSelectedMonth = safeParseJson(map[PERSIST_KEYS.accountingSelectedMonth], null);
+        if (typeof storedSelectedMonth === 'string') setSelectedMonth(storedSelectedMonth);
+
+        const storedSelectedCategories = safeParseJson(map[PERSIST_KEYS.accountingSelectedCategories], null);
+        if (Array.isArray(storedSelectedCategories)) setSelectedCategories(storedSelectedCategories);
+      } catch (e) {
+        console.warn('AsyncStorage load error:', e);
+      }
+    })();
+  }, []);
+  
+  // 狀態變更時儲存（財務相關）
+  useEffect(() => { saveJson(PERSIST_KEYS.transactions, transactions); }, [transactions]);
+  useEffect(() => { saveJson(PERSIST_KEYS.savedMoney, savedMoney); }, [savedMoney]);
+  useEffect(() => { saveJson(PERSIST_KEYS.dreamPlans, dreamPlans); }, [dreamPlans]);
+  useEffect(() => { saveJson(PERSIST_KEYS.selectedDreamPlanId, selectedDreamPlanId); }, [selectedDreamPlanId]);
+  useEffect(() => { saveJson(PERSIST_KEYS.selectedWithdrawDreamPlanId, selectedWithdrawDreamPlanId); }, [selectedWithdrawDreamPlanId]);
+
+  // 狀態變更時儲存（寵物與日常相關）
+  useEffect(() => { saveJson(PERSIST_KEYS.petStatus, petStatus); }, [petStatus]);
+  useEffect(() => { saveJson(PERSIST_KEYS.dailyCounters, dailyCounters); }, [dailyCounters]);
+  useEffect(() => { saveJson(PERSIST_KEYS.walkStreak, walkStreak); }, [walkStreak]);
+  useEffect(() => { saveJson(PERSIST_KEYS.backpack, backpack); }, [backpack]);
+  useEffect(() => { saveJson(PERSIST_KEYS.savingsGoals, savingsGoals); }, [savingsGoals]);
+
+  // 記帳頁面 UI 狀態變更時儲存
+  useEffect(() => { saveJson(PERSIST_KEYS.accountingSearchText, searchText); }, [searchText]);
+  useEffect(() => { saveJson(PERSIST_KEYS.accountingSelectedMonth, selectedMonth); }, [selectedMonth]);
+  useEffect(() => { saveJson(PERSIST_KEYS.accountingSelectedCategories, selectedCategories); }, [selectedCategories]);
+  
+  // 簡化圖片載入 - 立即載入
+  useEffect(() => {
     console.log('PetCareScreen 圖片載入完成');
-    // 立即設置為已載入，不需要預載入延遲
     setImagesLoaded(true);
   }, []);
 
@@ -478,7 +601,6 @@ export default function PetCareScreen({
     }
     
     setDepositAmount('');
-    setShowSavingsPage(false);
     Alert.alert('💰 存錢成功！', `成功存入 ${amount} 元！\n繼續努力存錢吧！`, [{ text: '確定', style: 'default' }]);
   };
 
@@ -2334,12 +2456,12 @@ export default function PetCareScreen({
               <Text style={styles.piggyBankBalanceText}>目前累積儲蓄：{savedMoney} 元</Text>
             </View>
             {/* 存入金額區塊 */}
-            <View style={styles.withdrawSection}>
+            <View style={[styles.withdrawSection, { backgroundColor: '#FFF3E0', borderColor: '#FF9800' }]}>
               <Text style={[styles.withdrawSectionTitle, { color: '#FF9800' }]}>💰 存入功能</Text>
-              <Text style={styles.withdrawSectionDescription}>當前儲蓄餘額：{savedMoney} 元</Text>
+              <Text style={[styles.withdrawSectionDescription, { color: '#E65100' }]}>當前儲蓄餘額：{savedMoney} 元</Text>
               {dreamPlans.length > 0 && (
                 <View style={{ marginBottom: 10 }}>
-                  <Text style={[styles.withdrawSectionDescription, { marginBottom: 6 }]}>選擇存入的夢想計畫：</Text>
+                  <Text style={[styles.withdrawSectionDescription, { marginBottom: 6, color: '#E65100' }]}>選擇存入的夢想計畫：</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {dreamPlans.map(plan => (
                       <TouchableOpacity
@@ -2362,16 +2484,16 @@ export default function PetCareScreen({
                 </View>
               )}
               <View style={styles.withdrawCustomAmount}>
-                <Text style={styles.withdrawCustomAmountLabel}>存入金額：</Text>
+                <Text style={[styles.withdrawCustomAmountLabel, { color: '#E65100' }]}>存入金額：</Text>
                 <View style={styles.customAmountRow}>
                   <TextInput
-                    style={styles.withdrawCustomAmountInput}
+                    style={styles.depositCustomAmountInput}
                     placeholder="輸入金額"
                     keyboardType="numeric"
                     value={depositAmount}
                     maxLength={6}
                     onChangeText={(t) => setDepositAmount(t.replace(/[^0-9]/g,'').slice(0,6))}
-                    placeholderTextColor="#999"
+                    placeholderTextColor="#FFA726"
                   />
                   <TouchableOpacity 
                     style={[
@@ -3543,6 +3665,16 @@ const styles = StyleSheet.create({
     padding: 15,
     borderWidth: 2,
     borderColor: '#4CAF50',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  depositCustomAmountInput: {
+    flex: 1,
+    backgroundColor: '#FFF8F0',
+    borderRadius: 12,
+    padding: 15,
+    borderWidth: 2,
+    borderColor: '#FF9800',
     fontSize: 16,
     textAlign: 'center',
   },
