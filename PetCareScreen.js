@@ -28,7 +28,9 @@ export default function PetCareScreen({
   todayStats,
   setTodayStats,
   petQuoteTriggered,
-  setPetQuoteTriggered
+  setPetQuoteTriggered,
+  isDarkTheme,
+  language
 }) {
   // 持久化鍵值
   const PERSIST_KEYS = {
@@ -1433,14 +1435,46 @@ export default function PetCareScreen({
     }, 2000);
   };
 
+  const themeColors = isDarkTheme
+    ? {
+        background: '#121212',
+        card: '#1E1E1E',
+        text: '#EDEFF2',
+        subText: '#B0BEC5',
+        accent: '#90CAF9',
+      }
+    : {
+        background: '#FFFFFF',
+        card: '#FFFFFF',
+        text: '#333333',
+        subText: '#666666',
+        accent: '#1976D2',
+  };
+
+  const i18nLocal = {
+    'zh-TW': {
+      feed: '餵食', clean: '清潔', pet: '摸摸頭', play: '玩耍',
+      accounting: '記帳', backpack: '背包', shop: '商店', savings: '存錢',
+      accountingPage: '記帳', inputAmount: '輸入金額', type: '類型', category: '類別', note: '備註', monthlyReport: '月報表', transactionList: '交易列表', amount: '金額',
+      savingsPage: '存錢', savingsFeature: '存錢功能', depositSection: '存入功能', depositAmount: '存入金額：', withdrawSection: '取出功能', withdrawAmount: '取出金額：', goalsProgress: '目標進度', dreamSavings: '夢想存錢', depositAction: '存入', withdrawAction: '取出'
+    },
+    en: {
+      feed: 'Feed', clean: 'Clean', pet: 'Head Pat', play: 'Play',
+      accounting: 'Accounting', backpack: 'Backpack', shop: 'Shop', savings: 'Save',
+      accountingPage: 'Accounting', inputAmount: 'Amount', type: 'Type', category: 'Category', note: 'Note', monthlyReport: 'Monthly Report', transactionList: 'Transactions', amount: 'Amount',
+      savingsPage: 'Savings', savingsFeature: 'Savings Feature', depositSection: 'Deposit', depositAmount: 'Deposit Amount:', withdrawSection: 'Withdraw', withdrawAmount: 'Withdraw Amount:', goalsProgress: 'Goals Progress', dreamSavings: 'Dream Savings', depositAction: 'Deposit', withdrawAction: 'Withdraw'
+    }
+  };
+  const tt = (key) => (i18nLocal[(typeof language === 'string' ? language : 'zh-TW')] && i18nLocal[(typeof language === 'string' ? language : 'zh-TW')][key]) || (i18nLocal['zh-TW'][key] || key);
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
       {/* 標題欄 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: isDarkTheme ? '#0B1220' : '#F8FBFF', borderBottomColor: isDarkTheme ? '#263238' : '#E3F2FD' }]}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#1976D2" />
+          <Ionicons name="arrow-back" size={24} color={isDarkTheme ? '#90CAF9' : '#1976D2'} />
         </TouchableOpacity>
-        <Text style={styles.title}>{selectedPet.name}的專屬空間</Text>
+        <Text style={[styles.title, { color: themeColors.text }]}>{selectedPet.name}的專屬空間</Text>
         <View style={styles.headerRight}>
           <Text style={styles.emotion}>{currentEmotion}</Text>
           <View style={styles.iceCoinContainer}>
@@ -1450,7 +1484,7 @@ export default function PetCareScreen({
               onError={(error) => console.log('冰晶藍幣圖片載入失敗:', error)}
               onLoad={() => console.log('冰晶藍幣圖片載入成功')}
             />
-            <Text style={styles.iceCoinText}>{backpack.iceCoins}</Text>
+            <Text style={[styles.iceCoinText, { color: themeColors.text }]}>{backpack.iceCoins}</Text>
           </View>
         </View>
       </View>
@@ -1487,7 +1521,10 @@ export default function PetCareScreen({
           <View style={styles.progressContainer}>
             <View style={[styles.progressBar, styles.hungerBar, { width: `${petStatus.hunger}%` }]} />
           </View>
-          <Text style={styles.statusValue}>{petStatus.hunger}%</Text>
+          <Text style={[
+            styles.statusValue,
+            isDarkTheme ? styles.statusValueDark : styles.statusValueLight
+          ]}>{petStatus.hunger}%</Text>
         </View>
 
         <View style={styles.statusItem}>
@@ -1495,7 +1532,10 @@ export default function PetCareScreen({
           <View style={styles.progressContainer}>
             <View style={[styles.progressBar, styles.cleanlinessBar, { width: `${petStatus.cleanliness}%` }]} />
           </View>
-          <Text style={styles.statusValue}>{petStatus.cleanliness}%</Text>
+          <Text style={[
+            styles.statusValue,
+            isDarkTheme ? styles.statusValueDark : styles.statusValueLight
+          ]}>{petStatus.cleanliness}%</Text>
         </View>
 
         <View style={styles.statusItem}>
@@ -1503,7 +1543,10 @@ export default function PetCareScreen({
           <View style={styles.progressContainer}>
             <View style={[styles.progressBar, styles.affectionBar, { width: `${petStatus.affection}%` }]} />
           </View>
-          <Text style={styles.statusValue}>{petStatus.affection}%</Text>
+          <Text style={[
+            styles.statusValue,
+            isDarkTheme ? styles.statusValueDark : styles.statusValueLight
+          ]}>{petStatus.affection}%</Text>
         </View>
       </View>
 
@@ -1525,11 +1568,11 @@ export default function PetCareScreen({
       </View>
 
       {/* 互動按鈕 */}
-      <View style={styles.interactionButtons}>
+      <View style={[styles.interactionButtons, isDarkTheme && { backgroundColor: '#0B1220' }]}>
         <View style={styles.feedButtonContainer}>
-          <TouchableOpacity style={[styles.interactionButton, preparedFood && styles.interactionButtonReady]} onPress={onPressFeed}>
+          <TouchableOpacity style={[styles.interactionButton, isDarkTheme && { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, shadowColor: '#000' }, preparedFood && styles.interactionButtonReady]} onPress={onPressFeed}>
             <Text style={styles.buttonIcon}>🍖</Text>
-            <Text style={styles.buttonText}>餵食</Text>
+            <Text style={[styles.buttonText, { color: themeColors.text }]}>{tt('feed')}</Text>
           </TouchableOpacity>
           {preparedFood && (
             <Text style={styles.preparedFoodText}>已準備：{preparedFood.name}</Text>
@@ -1537,24 +1580,24 @@ export default function PetCareScreen({
         </View>
 
         <View style={styles.cleanButtonContainer}>
-          <TouchableOpacity style={[styles.interactionButton, preparedGrooming && styles.interactionButtonReady]} onPress={onPressClean}>
+          <TouchableOpacity style={[styles.interactionButton, isDarkTheme && { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, shadowColor: '#000' }, preparedGrooming && styles.interactionButtonReady]} onPress={onPressClean}>
             <Text style={styles.buttonIcon}>🛁</Text>
-            <Text style={styles.buttonText}>清潔</Text>
+            <Text style={[styles.buttonText, { color: themeColors.text }]}>{tt('clean')}</Text>
           </TouchableOpacity>
           {preparedGrooming && (
             <Text style={styles.preparedGroomingText}>已準備：{preparedGrooming.name}</Text>
           )}
         </View>
 
-        <TouchableOpacity style={styles.interactionButton} onPress={onPressPet}>
+        <TouchableOpacity style={[styles.interactionButton, isDarkTheme && { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, shadowColor: '#000' }]} onPress={onPressPet}>
           <Text style={styles.buttonIcon}>✋</Text>
-          <Text style={styles.buttonText}>摸摸頭</Text>
+          <Text style={[styles.buttonText, { color: themeColors.text }]}>{tt('pet')}</Text>
         </TouchableOpacity>
 
         <View style={styles.playButtonContainer}>
-          <TouchableOpacity style={[styles.interactionButton, preparedToy && styles.interactionButtonReady]} onPress={onPressWalk}>
+          <TouchableOpacity style={[styles.interactionButton, isDarkTheme && { backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1, shadowColor: '#000' }, preparedToy && styles.interactionButtonReady]} onPress={onPressWalk}>
             <Text style={styles.buttonIcon}>⚽</Text>
-            <Text style={styles.buttonText}>玩耍</Text>
+            <Text style={[styles.buttonText, { color: themeColors.text }]}>{tt('play')}</Text>
           </TouchableOpacity>
           {preparedToy && (
             <Text style={styles.preparedToyText}>已準備：{preparedToy.name}</Text>
@@ -1566,24 +1609,24 @@ export default function PetCareScreen({
       <View style={styles.newFunctionRow}>
 
 
-        <TouchableOpacity style={styles.accountingButton} onPress={() => setShowAccountingPage(true)}>
+        <TouchableOpacity style={[styles.accountingButton, isDarkTheme && { backgroundColor: '#1E293B', borderColor: '#334155', shadowColor: '#000' }]} onPress={() => setShowAccountingPage(true)}>
           <Text style={styles.accountingButtonIcon}>🧾</Text>
-          <Text style={styles.accountingButtonText}>記帳</Text>
+          <Text style={[styles.accountingButtonText, isDarkTheme && { color: themeColors.text }]}>{tt('accounting')}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.backpackButton} onPress={() => setShowBackpack(true)}>
+        <TouchableOpacity style={[styles.backpackButton, isDarkTheme && { backgroundColor: '#1E293B', borderColor: '#334155', shadowColor: '#000' }]} onPress={() => setShowBackpack(true)}>
           <Text style={styles.backpackButtonIcon}>📦</Text>
-          <Text style={styles.backpackButtonText}>背包</Text>
+          <Text style={[styles.backpackButtonText, isDarkTheme && { color: themeColors.text }]}>{tt('backpack')}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.shopButton} onPress={() => setShowShop(true)}>
+        <TouchableOpacity style={[styles.shopButton, isDarkTheme && { backgroundColor: '#1E293B', borderColor: '#334155', shadowColor: '#000' }]} onPress={() => setShowShop(true)}>
           <Text style={styles.shopButtonIcon}>🛍️</Text>
-          <Text style={styles.shopButtonText}>商店</Text>
+          <Text style={[styles.shopButtonText, isDarkTheme && { color: themeColors.text }]}>{tt('shop')}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.savingsButton} onPress={() => setShowSavingsPage(true)}>
+        <TouchableOpacity style={[styles.savingsButton, isDarkTheme && { backgroundColor: '#3E2A11', borderColor: '#FFB74D', shadowColor: '#000' }]} onPress={() => setShowSavingsPage(true)}>
           <Text style={styles.savingsButtonIcon}>💰</Text>
-          <Text style={styles.savingsButtonText}>存錢</Text>
+          <Text style={[styles.savingsButtonText, isDarkTheme && { color: themeColors.text }]}>{tt('savings')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -1733,14 +1776,14 @@ export default function PetCareScreen({
             <TouchableOpacity onPress={() => setShowAccountingPage(false)} style={styles.backButton}>
               <Ionicons name="arrow-back" size={24} color="#1976D2" />
               </TouchableOpacity>
-            <Text style={styles.title}>🧾 記帳</Text>
+            <Text style={styles.title}>🧾 {tt('accountingPage')}</Text>
             <View style={{ width: 24 }} />
               </View>
               
           <ScrollView style={styles.accountingContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {/* 金額輸入 */}
             <View style={styles.accountingSection}>
-              <Text style={styles.sectionTitle}>輸入金額</Text>
+              <Text style={[styles.sectionTitle, { color: themeColors.text }]}>{tt('inputAmount')}</Text>
               <TextInput
                 style={styles.amountInput}
                 placeholder="例如 150"
@@ -1753,26 +1796,26 @@ export default function PetCareScreen({
               
             {/* 類型切換 */}
             <View style={styles.accountingSection}>
-              <Text style={styles.sectionTitle}>類型</Text>
+              <Text style={[styles.sectionTitle, { color: themeColors.text }]}>{tt('type')}</Text>
               <View style={styles.typeToggleRow}>
                   <TouchableOpacity 
                   style={[styles.typeButton, transactionType === 'expense' && styles.typeButtonActive]}
                   onPress={() => setTransactionType('expense')}
                   >
-                  <Text style={[styles.typeButtonText, transactionType === 'expense' && styles.typeButtonTextActive]}>支出</Text>
+                  <Text style={[styles.typeButtonText, isDarkTheme && { color: themeColors.text }, transactionType === 'expense' && styles.typeButtonTextActive]}>支出</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
                   style={[styles.typeButton, transactionType === 'income' && styles.typeButtonActive]}
                   onPress={() => setTransactionType('income')}
                   >
-                  <Text style={[styles.typeButtonText, transactionType === 'income' && styles.typeButtonTextActive]}>收入</Text>
+                  <Text style={[styles.typeButtonText, isDarkTheme && { color: themeColors.text }, transactionType === 'income' && styles.typeButtonTextActive]}>收入</Text>
                   </TouchableOpacity>
               </View>
             </View>
 
             {/* 類別選擇 */}
             <View style={styles.accountingSection}>
-              <Text style={styles.sectionTitle}>類別</Text>
+              <Text style={[styles.sectionTitle, { color: themeColors.text }]}>{tt('category')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.categoryChipsRow}>
                   {accountingCategories
@@ -1780,11 +1823,11 @@ export default function PetCareScreen({
                     .map(cat => (
                   <TouchableOpacity 
                         key={cat.id}
-                        style={[styles.categoryChip, transactionCategory === cat.id && styles.categoryChipActive]}
+                        style={[styles.categoryChip, isDarkTheme && { backgroundColor: '#0B1220', borderColor: '#334155' }, transactionCategory === cat.id && styles.categoryChipActive]}
                         onPress={() => setTransactionCategory(cat.id)}
                       >
                         <Text style={styles.categoryChipIcon}>{cat.icon}</Text>
-                        <Text style={[styles.categoryChipText, transactionCategory === cat.id && styles.categoryChipTextActive]}>
+                        <Text style={[styles.categoryChipText, isDarkTheme && { color: themeColors.text }, transactionCategory === cat.id && styles.categoryChipTextActive]}>
                           {cat.id}
                         </Text>
                   </TouchableOpacity>
@@ -1795,7 +1838,7 @@ export default function PetCareScreen({
               
             {/* 備註 */}
             <View style={styles.accountingSection}>
-              <Text style={styles.sectionTitle}>備註</Text>
+              <Text style={[styles.sectionTitle, { color: themeColors.text }]}>{tt('note')}</Text>
                   <TextInput
                 style={styles.noteInput}
                 placeholder="可填寫店家/用途..."
@@ -1817,7 +1860,7 @@ export default function PetCareScreen({
             {/* 月報表 */}
             <View style={styles.accountingSection}>
               <View style={styles.monthlyHeader}>
-                <Text style={styles.sectionTitle}>月報表</Text>
+                <Text style={[styles.sectionTitle, { color: themeColors.text }]}>{tt('monthlyReport')}</Text>
                 <TouchableOpacity style={styles.monthSelector}>
                   <Text style={styles.monthSelectorText}>{selectedMonth.replace('-', '/')} ▾</Text>
                   </TouchableOpacity>
@@ -1829,19 +1872,19 @@ export default function PetCareScreen({
                   <View style={styles.monthlyStats}>
                     <View style={styles.monthlyOverview}>
                       <View style={styles.monthlyStatItem}>
-                        <Text style={styles.monthlyStatLabel}>支出</Text>
+                        <Text style={[styles.monthlyStatLabel, { color: themeColors.subText }]}>支出</Text>
                         <Text style={[styles.monthlyStatValue, { color: '#FF5252' }]}>
                           ${stats.totalExpense}
                         </Text>
                       </View>
                       <View style={styles.monthlyStatItem}>
-                        <Text style={styles.monthlyStatLabel}>收入</Text>
+                        <Text style={[styles.monthlyStatLabel, { color: themeColors.subText }]}>收入</Text>
                         <Text style={[styles.monthlyStatValue, { color: '#4CAF50' }]}>
                           ${stats.totalIncome}
                         </Text>
                       </View>
                       <View style={styles.monthlyStatItem}>
-                        <Text style={styles.monthlyStatLabel}>結餘</Text>
+                        <Text style={[styles.monthlyStatLabel, { color: themeColors.subText }]}>結餘</Text>
                         <Text style={[styles.monthlyStatValue, { color: '#1976D2' }]}>
                           ${stats.totalIncome - stats.totalExpense}
                         </Text>
@@ -1856,11 +1899,11 @@ export default function PetCareScreen({
                           <View key={cat.id} style={styles.categoryStatRow}>
                             <View style={styles.categoryStatLeft}>
                               <Text style={styles.categoryStatIcon}>{cat.icon}</Text>
-                              <Text style={styles.categoryStatName}>{cat.id}</Text>
+                              <Text style={[styles.categoryStatName, { color: themeColors.text }]}>{cat.id}</Text>
                             </View>
                             <View style={styles.categoryStatRight}>
                               <Text style={styles.categoryStatAmount}>${cat.amount}</Text>
-                              <Text style={styles.categoryStatPercent}>
+                              <Text style={[styles.categoryStatPercent, { color: themeColors.subText }] }>
                                 {Math.round((cat.amount / stats.totalExpense) * 100)}%
                               </Text>
                             </View>
@@ -1875,7 +1918,7 @@ export default function PetCareScreen({
             {/* 搜尋與篩選 */}
             <View style={styles.accountingSection}>
               <View style={styles.searchFilterHeader}>
-                <View style={styles.searchBox}>
+                <View style={[styles.searchBox, isDarkTheme && { backgroundColor: '#1E293B', borderColor: '#334155' }]}>
                   <Ionicons name="search" size={20} color="#666" />
                     <TextInput
                     style={styles.searchInput}
@@ -1886,7 +1929,11 @@ export default function PetCareScreen({
                     />
                 </View>
                     <TouchableOpacity 
-                  style={[styles.filterButton, showFilter && styles.filterButtonActive]}
+                  style={[
+                    styles.filterButton,
+                    isDarkTheme && { backgroundColor: '#1E293B', borderColor: '#334155' },
+                    showFilter && styles.filterButtonActive
+                  ]}
                   onPress={() => setShowFilter(!showFilter)}
                     >
                   <Ionicons name="filter" size={20} color={showFilter ? "#1976D2" : "#666"} />
@@ -1894,7 +1941,7 @@ export default function PetCareScreen({
               </View>
               
               {showFilter && (
-                <View style={styles.filterPanel}>
+                <View style={[styles.filterPanel, isDarkTheme && { backgroundColor: '#0B1220', borderColor: '#334155' }]}>
                   <Text style={styles.filterTitle}>類別篩選</Text>
                   <View style={styles.filterChips}>
                     {accountingCategories.map(cat => (
@@ -1928,7 +1975,7 @@ export default function PetCareScreen({
             
             {/* 交易列表 */}
             <View style={styles.accountingSection}>
-              <Text style={styles.sectionTitle}>交易列表</Text>
+              <Text style={styles.sectionTitle}>{tt('transactionList')}</Text>
               {filteredTransactions.length === 0 ? (
                 <Text style={styles.emptyText}>尚無紀錄</Text>
               ) : (
@@ -2490,13 +2537,13 @@ export default function PetCareScreen({
             <TouchableOpacity onPress={() => setShowSavingsPage(false)} style={styles.backButton}>
               <Ionicons name="arrow-back" size={24} color="#1976D2" />
             </TouchableOpacity>
-            <Text style={styles.title}>💰 存錢</Text>
+            <Text style={styles.title}>💰 {tt('savingsPage')}</Text>
             <View style={{ width: 24 }} />
           </View>
           <ScrollView style={styles.accountingContent} showsVerticalScrollIndicator={false}>
             {/* 標題區塊 */}
             <View style={styles.piggyBankHeader}>
-              <Text style={styles.piggyBankTitle}>💎 存錢功能</Text>
+              <Text style={styles.piggyBankTitle}>💎 {tt('savingsFeature')}</Text>
               <Text style={styles.piggyBankDescription}>設定目標，養成儲蓄的好習慣！</Text>
             </View>
             {/* 餘額顯示區塊 */}
@@ -2506,7 +2553,7 @@ export default function PetCareScreen({
             </View>
             {/* 存入金額區塊 */}
             <View style={[styles.withdrawSection, { backgroundColor: '#FFF3E0', borderColor: '#FF9800' }]}>
-              <Text style={[styles.withdrawSectionTitle, { color: '#FF9800' }]}>💰 存入功能</Text>
+              <Text style={[styles.withdrawSectionTitle, { color: '#FF9800' }]}>💰 {tt('depositSection')}</Text>
               <Text style={[styles.withdrawSectionDescription, { color: '#E65100' }]}>當前儲蓄餘額：{savedMoney} 元</Text>
               {dreamPlans.length > 0 && (
                 <View style={{ marginBottom: 10 }}>
@@ -2533,7 +2580,7 @@ export default function PetCareScreen({
                 </View>
               )}
               <View style={styles.withdrawCustomAmount}>
-                <Text style={[styles.withdrawCustomAmountLabel, { color: '#E65100' }]}>存入金額：</Text>
+                <Text style={[styles.withdrawCustomAmountLabel, { color: '#E65100' }]}>{tt('depositAmount')}</Text>
                 <View style={styles.customAmountRow}>
                   <TextInput
                     style={styles.depositCustomAmountInput}
@@ -2553,14 +2600,14 @@ export default function PetCareScreen({
                     onPress={() => handleSaveMoney(parseInt(depositAmount))}
                     disabled={!depositAmount || parseInt(depositAmount) <= 0}
                   >
-                    <Text style={styles.withdrawCustomAmountButtonText}>存入</Text>
+                    <Text style={styles.withdrawCustomAmountButtonText}>{tt('depositAction')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
             {/* 取出功能區塊 */}
             <View style={styles.withdrawSection}>
-              <Text style={styles.withdrawSectionTitle}>💸 取出功能</Text>
+              <Text style={styles.withdrawSectionTitle}>💸 {tt('withdrawSection')}</Text>
               <Text style={styles.withdrawSectionDescription}>當前儲蓄餘額：{savedMoney} 元</Text>
               {dreamPlans.length > 0 && (
                 <View style={{ marginBottom: 10 }}>
@@ -2587,7 +2634,7 @@ export default function PetCareScreen({
                 </View>
               )}
               <View style={styles.withdrawCustomAmount}>
-                <Text style={styles.withdrawCustomAmountLabel}>取出金額：</Text>
+                <Text style={styles.withdrawCustomAmountLabel}>{tt('withdrawAmount')}</Text>
                 <View style={styles.customAmountRow}>
                   <TextInput
                     style={styles.withdrawCustomAmountInput}
@@ -2603,14 +2650,14 @@ export default function PetCareScreen({
                     onPress={() => handleWithdrawMoney(parseInt(withdrawAmount))}
                     disabled={!withdrawAmount || parseInt(withdrawAmount) <= 0 || parseInt(withdrawAmount) > savedMoney}
                   >
-                    <Text style={styles.withdrawCustomAmountButtonText}>取出</Text>
+                    <Text style={styles.withdrawCustomAmountButtonText}>{tt('withdrawAction')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
             {/* 目標進度（夢想存錢） */}
             <View style={styles.accountingSection}>
-              <Text style={styles.sectionTitle}>目標進度</Text>
+              <Text style={styles.sectionTitle}>{tt('goalsProgress')}</Text>
               {dreamPlans.length === 0 && (
                 <Text style={{ fontSize: 14, color: '#757575', marginBottom: 10 }}>尚未建立夢想存錢計畫，點擊下方「夢想存錢」新增吧！</Text>
               )}
@@ -2635,7 +2682,7 @@ export default function PetCareScreen({
                 style={[styles.viewGoalsButton, { backgroundColor: '#1976D2' }]}
                 onPress={() => setShowDreamSavingsPage(true)}
               >
-                <Text style={styles.viewGoalsButtonText}>⭐ 夢想存錢</Text>
+                <Text style={styles.viewGoalsButtonText}>⭐ {tt('dreamSavings')}</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -3083,9 +3130,31 @@ const styles = StyleSheet.create({
   statusValue: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#333',
     width: 40,
     textAlign: 'right',
+  },
+  statusValueLight: {
+    color: '#1B1B1B',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 6,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    overflow: 'hidden',
+  },
+  statusValueDark: {
+    color: '#EDEFF2',
+    backgroundColor: '#0B1220',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 6,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
   },
   interactionButtons: {
     flexDirection: 'row',
@@ -3104,10 +3173,11 @@ const styles = StyleSheet.create({
   },
   interactionButton: {
     alignItems: 'center',
-    padding: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     backgroundColor: '#F8FBFF',
-    borderRadius: 15,
-    minWidth: 70,
+    borderRadius: 12,
+    minWidth: 60,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -3141,11 +3211,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   buttonIcon: {
-    fontSize: 24,
-    marginBottom: 5,
+    fontSize: 20,
+    marginBottom: 4,
   },
   buttonText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#333',
     fontWeight: '600',
   },
@@ -3179,10 +3249,11 @@ const styles = StyleSheet.create({
   // 記帳按鈕特別樣式
   accountingButton: {
     alignItems: 'center',
-    padding: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     backgroundColor: '#E3F2FD',
-    borderRadius: 18,
-    minWidth: 70,
+    borderRadius: 14,
+    minWidth: 60,
     shadowColor: '#2196F3',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
@@ -3192,11 +3263,11 @@ const styles = StyleSheet.create({
     borderColor: '#90CAF9',
   },
   accountingButtonIcon: {
-    fontSize: 26,
-    marginBottom: 3,
+    fontSize: 22,
+    marginBottom: 2,
   },
   accountingButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#1565C0',
     fontWeight: '700',
     letterSpacing: 0.3,
@@ -3204,10 +3275,11 @@ const styles = StyleSheet.create({
   // 背包按鈕特別樣式
   backpackButton: {
     alignItems: 'center',
-    padding: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     backgroundColor: '#F3E5F5',
-    borderRadius: 18,
-    minWidth: 70,
+    borderRadius: 14,
+    minWidth: 60,
     shadowColor: '#9C27B0',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
@@ -3217,11 +3289,11 @@ const styles = StyleSheet.create({
     borderColor: '#CE93D8',
   },
   backpackButtonIcon: {
-    fontSize: 26,
-    marginBottom: 3,
+    fontSize: 22,
+    marginBottom: 2,
   },
   backpackButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#7B1FA2',
     fontWeight: '700',
     letterSpacing: 0.3,
@@ -3229,10 +3301,11 @@ const styles = StyleSheet.create({
   // 商店按鈕特別樣式
   shopButton: {
     alignItems: 'center',
-    padding: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     backgroundColor: '#E8F5E8',
-    borderRadius: 18,
-    minWidth: 70,
+    borderRadius: 14,
+    minWidth: 60,
     shadowColor: '#4CAF50',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
@@ -3242,11 +3315,11 @@ const styles = StyleSheet.create({
     borderColor: '#A5D6A7',
   },
   shopButtonIcon: {
-    fontSize: 26,
-    marginBottom: 3,
+    fontSize: 22,
+    marginBottom: 2,
   },
   shopButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#2E7D32',
     fontWeight: '700',
     letterSpacing: 0.3,
@@ -3254,10 +3327,11 @@ const styles = StyleSheet.create({
   // 存錢按鈕特別樣式
   savingsButton: {
     alignItems: 'center',
-    padding: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     backgroundColor: '#FFE0B2',
-    borderRadius: 20,
-    minWidth: 70,
+    borderRadius: 16,
+    minWidth: 60,
     shadowColor: '#FF9800',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -3268,11 +3342,11 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1 }],
   },
   savingsButtonIcon: {
-    fontSize: 28,
+    fontSize: 22,
     marginBottom: 2,
   },
   savingsButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#E65100',
     fontWeight: '800',
     letterSpacing: 0.5,

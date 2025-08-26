@@ -13,10 +13,12 @@ import {
   Alert,
   TextInput,
   Switch,
+  useColorScheme,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import PetCareScreen from './PetCareScreen';
+import * as Notifications from 'expo-notifications';
 
 export default function App() {
   const PERSIST_KEYS = {
@@ -43,9 +45,120 @@ export default function App() {
     soundEnabled: true,
     hapticsEnabled: true,
     notificationsEnabled: false,
+    reminderEnabled: false,
+    reminderHour: 20,
+    reminderMinute: 0,
     theme: 'light',
     language: 'zh-TW',
   });
+  // 簡易多語系
+  const i18n = {
+    'zh-TW': {
+      appTitle: '寵物軍團',
+      subtitle: '與你的毛小孩一起成長',
+      panelTitle: '功能面板',
+      menu_myPets: '毛小孩們',
+      menu_gift: '禮物箱',
+      menu_diary: '日記本',
+      menu_settings: '設定',
+      myPetsTitle: '🐾 毛小孩們',
+      goToNurture: '前往養成',
+      noPetSelected: '尚未選擇寵物',
+      switchPartner: '切換夥伴',
+      noNurturedPets: '尚無養成紀錄，選擇寵物開始養成吧！',
+      dailyRewardTitle: '🎁 每日登入獎勵',
+      dailyRewardDesc: '每日登入即可領取冰冰幣獎勵！',
+      dailyRewardNoteClaimed: '今日已領取',
+      dailyRewardNoteUnclaimed: '今日尚未領取',
+      claimNow: '立即領取',
+      claimed: '已領取',
+      diaryTitle: '📝 今日日記',
+      handwritingDiary: '✍️ 手寫日記',
+      saveDiary: '保存日記',
+      petQuotesTitle: '🐾 寵物語錄',
+      todayStatsTitle: '📊 今日互動統計',
+      stat_feed: '餵食次數',
+      stat_clean: '清潔次數',
+      stat_pet: '摸摸頭',
+      stat_walk: '散步次數',
+      stat_affection: '親密度提升',
+      settingsTitle: '⚙️ 設定',
+      general: '一般',
+      appearance: '外觀',
+      languageLabel: '語言',
+      reminder: '提醒',
+      reminderTime: '提醒時間',
+      notifications: '推播通知',
+      theme_light: '淺色', theme_dark: '深色', theme_system: '跟隨系統',
+    },
+    en: {
+      appTitle: 'Pet Legion',
+      subtitle: 'Grow with your pet companions',
+      panelTitle: 'Features',
+      menu_myPets: 'My Pets',
+      menu_gift: 'Gifts',
+      menu_diary: 'Diary',
+      menu_settings: 'Settings',
+      myPetsTitle: '🐾 My Pets',
+      goToNurture: 'Go to Nurturing',
+      noPetSelected: 'No pet selected',
+      switchPartner: 'Switch Partner',
+      noNurturedPets: 'No nurturing records yet. Pick a pet to start!',
+      dailyRewardTitle: '🎁 Daily Login Reward',
+      dailyRewardDesc: 'Log in daily to get Ice Coins!',
+      dailyRewardNoteClaimed: 'Claimed today',
+      dailyRewardNoteUnclaimed: 'Not claimed today',
+      claimNow: 'Claim Now',
+      claimed: 'Claimed',
+      diaryTitle: '📝 Today\'s Diary',
+      handwritingDiary: '✍️ Handwritten Diary',
+      saveDiary: 'Save Diary',
+      petQuotesTitle: '🐾 Pet Quotes',
+      todayStatsTitle: '📊 Today\'s Interactions',
+      stat_feed: 'Feeds',
+      stat_clean: 'Cleans',
+      stat_pet: 'Head Pats',
+      stat_walk: 'Walks',
+      stat_affection: 'Affection Gained',
+      settingsTitle: '⚙️ Settings',
+      general: 'General',
+      appearance: 'Appearance',
+      languageLabel: 'Language',
+      reminder: 'Reminder',
+      reminderTime: 'Reminder Time',
+      notifications: 'Notifications',
+      theme_light: 'Light', theme_dark: 'Dark', theme_system: 'System',
+    },
+  };
+  const t = (key) => (i18n[settings.language] && i18n[settings.language][key]) || (i18n['zh-TW'][key] || key);
+  const [customReminderText, setCustomReminderText] = useState(() => {
+    const hh = String(settings.reminderHour || 20).padStart(2, '0');
+    const mm = String(settings.reminderMinute || 0).padStart(2, '0');
+    return `${hh}:${mm}`;
+  });
+  // 主題（深色/淺色/系統）
+  const systemColorScheme = useColorScheme && useColorScheme();
+  const isDarkTheme = settings.theme === 'dark' ? true : settings.theme === 'light' ? false : (systemColorScheme === 'dark');
+  const theme = {
+    isDark: isDarkTheme,
+    colors: isDarkTheme
+      ? {
+          background: '#121212',
+          card: '#1E1E1E',
+          panel: '#0F172A',
+          text: '#EDEFF2',
+          subText: '#B0BEC5',
+          border: '#263238',
+        }
+      : {
+          background: '#FFFFFF',
+          card: '#FFFFFF',
+          panel: '#F0F8FF',
+          text: '#333333',
+          subText: '#666666',
+          border: '#E3F2FD',
+        },
+  };
   const [exportData, setExportData] = useState('');
   const [importData, setImportData] = useState('');
   const [todayStats, setTodayStats] = useState({
@@ -214,12 +327,39 @@ export default function App() {
     })();
   }, [settings]);
 
+  // 根據提醒設定排程/取消每日提醒（若裝置已支援通知）
+  useEffect(() => {
+    const scheduleOrCancelReminder = async () => {
+      try {
+        // 權限
+        const current = await Notifications.getPermissionsAsync();
+        let status = current.status;
+        if (status !== 'granted') {
+          const req = await Notifications.requestPermissionsAsync();
+          status = req.status;
+        }
+        // 先清掉舊的排程
+        await Notifications.cancelAllScheduledNotificationsAsync();
+        // 若開啟提醒且有權限，排程每天的通知
+        if (settings.reminderEnabled && status === 'granted') {
+          await Notifications.scheduleNotificationAsync({
+            content: { title: '記帳提醒', body: '該記帳囉！' },
+            trigger: { hour: settings.reminderHour || 20, minute: settings.reminderMinute || 0, repeats: true },
+          });
+        }
+      } catch (e) {
+        console.warn('notification scheduling skipped', e);
+      }
+    };
+    scheduleOrCancelReminder();
+  }, [settings.reminderEnabled, settings.reminderHour, settings.reminderMinute]);
+
   // 首頁按鈕
   const menuButtons = [
-    { id: 1, icon: '🐾', title: '毛小孩們', color: '#FF6B6B' },
-    { id: 4, icon: '🎁', title: '禮物箱', color: '#96CEB4' },
-    { id: 5, icon: '📝', title: '日記本', color: '#FFEAA7' },
-    { id: 8, icon: '⚙️', title: '設定', color: '#F7DC6F' },
+    { id: 1, key: 'myPets', icon: '🐾', color: '#FF6B6B' },
+    { id: 4, key: 'gift', icon: '🎁', color: '#96CEB4' },
+    { id: 5, key: 'diary', icon: '📝', color: '#FFEAA7' },
+    { id: 8, key: 'settings', icon: '⚙️', color: '#F7DC6F' },
   ];
 
   const handlePetSelect = (pet) => {
@@ -311,10 +451,10 @@ export default function App() {
   };
 
   const renderHomeScreen = () => (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.appTitle}>寵物軍團</Text>
-        <Text style={styles.subtitle}>與你的毛小孩一起成長</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <View style={[styles.header, { backgroundColor: theme.isDark ? '#0B1220' : '#F8FBFF', borderBottomColor: theme.colors.border }]}>
+        <Text style={[styles.appTitle, { color: '#1976D2' }]}>{t('appTitle')}</Text>
+        <Text style={[styles.subtitle, { color: theme.colors.subText }]}>{t('subtitle')}</Text>
       </View>
 
       <ScrollView style={styles.petList} showsVerticalScrollIndicator={false}>
@@ -338,9 +478,9 @@ export default function App() {
               }}
             />
             <View style={styles.petInfo}>
-              <Text style={styles.petName}>{pet.name}</Text>
-              <Text style={styles.petPersonality}>{pet.personality}</Text>
-              <Text style={styles.petDescription}>{pet.description}</Text>
+              <Text style={[styles.petName, { color: theme.colors.text }]}>{pet.name}</Text>
+              <Text style={[styles.petPersonality, { color: theme.isDark ? '#81D4FA' : '#1976D2' }]}>{pet.personality}</Text>
+              <Text style={[styles.petDescription, { color: theme.colors.subText }]}>{pet.description}</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#666" />
           </TouchableOpacity>
@@ -348,36 +488,45 @@ export default function App() {
       </ScrollView>
 
       {/* 功能面板 */}
-      <View style={styles.functionPanel}>
-        <Text style={styles.panelTitle}>功能面板</Text>
+      <View style={[styles.functionPanel, { backgroundColor: theme.colors.panel }]}>
+        <Text style={[styles.panelTitle, { color: theme.colors.text }]}>{t('panelTitle')}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={styles.buttonRow}>
             {menuButtons.map((button) => (
               <TouchableOpacity 
                 key={button.id} 
-                style={[styles.menuButton, { zIndex: 1000 }]}
+                style={[
+                  styles.menuButton,
+                  { zIndex: 1000 },
+                  theme.isDark && { backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155', shadowColor: '#000' }
+                ]}
                 activeOpacity={0.7}
                 onPress={() => {
-                  console.log('按鈕被點擊:', button.title);
-                  if (button.title === '禮物箱') {
+                  const key = button.key;
+                  if (key === 'gift') {
                     console.log('執行禮物箱功能');
                     handleGiftBox();
-                  } else if (button.title === '日記本') {
+                  } else if (key === 'diary') {
                     console.log('執行日記本功能');
                     handleDiary();
-                  } else if (button.title === '毛小孩們') {
+                  } else if (key === 'myPets') {
                     if (selectedPet) {
                       setShowMyPets(true);
                     } else {
                       Alert.alert('提示', '請先選擇一隻寵物再查看毛小孩們');
                     }
-                  } else if (button.title === '設定') {
+                  } else if (key === 'settings') {
                     setShowSettings(true);
                   }
                 }}
               >
-                <Text style={styles.buttonIcon}>{button.icon}</Text>
-                <Text style={styles.buttonText}>{button.title}</Text>
+                <Text style={[styles.buttonIcon, theme.isDark && { color: '#EDEFF2' }]}>{button.icon}</Text>
+                <Text style={[styles.buttonText, { color: theme.colors.text }]}>
+                  {button.key === 'myPets' ? t('menu_myPets')
+                    : button.key === 'gift' ? t('menu_gift')
+                    : button.key === 'diary' ? t('menu_diary')
+                    : t('menu_settings')}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -392,9 +541,9 @@ export default function App() {
         onRequestClose={() => setShowMyPets(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.diaryModal}>
+          <View style={[styles.diaryModal, { backgroundColor: theme.colors.card }]}>
             <View style={styles.diaryHeader}>
-              <Text style={styles.diaryTitle}>🐾 毛小孩們</Text>
+              <Text style={[styles.diaryTitle, { color: theme.isDark ? '#90CAF9' : '#1976D2' }]}>🐾 毛小孩們</Text>
               <TouchableOpacity onPress={() => setShowMyPets(false)}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
@@ -404,7 +553,7 @@ export default function App() {
                 {selectedPet ? (
                   <>
                     <Image source={selectedPet.image} style={{ width: 140, height: 140, borderRadius: 18, marginBottom: 10 }} />
-                    <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 10 }}>{selectedPet.name}</Text>
+                    <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.colors.text, marginBottom: 10 }}>{selectedPet.name}</Text>
                     <TouchableOpacity
                       onPress={() => { setShowMyPets(false); setShowPetCare(true); }}
                       style={{ backgroundColor: '#1976D2', borderRadius: 20, paddingVertical: 10, paddingHorizontal: 16 }}
@@ -413,13 +562,13 @@ export default function App() {
                     </TouchableOpacity>
                   </>
                 ) : (
-                  <Text style={{ fontSize: 16, color: '#666' }}>尚未選擇寵物</Text>
+                  <Text style={{ fontSize: 16, color: theme.colors.subText }}>尚未選擇寵物</Text>
                 )}
               </View>
 
               {petsWithRecords.size > 0 && (
                 <>
-                  <Text style={{ fontSize: 14, color: '#666', marginBottom: 8 }}>切換夥伴</Text>
+                  <Text style={{ fontSize: 14, color: theme.colors.subText, marginBottom: 8 }}>切換夥伴</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     <View style={{ flexDirection: 'row', gap: 12 }}>
                       {pets.filter(p => petsWithRecords.has(p.id)).map((p) => (
@@ -436,7 +585,7 @@ export default function App() {
                           }}
                         >
                           <Image source={p.image} style={{ width: 64, height: 64, borderRadius: 10, marginBottom: 6 }} />
-                          <Text style={{ fontSize: 12, color: '#333' }}>{p.name}</Text>
+                          <Text style={{ fontSize: 12, color: theme.colors.text }}>{p.name}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -444,7 +593,7 @@ export default function App() {
                 </>
               )}
               {petsWithRecords.size === 0 && (
-                <Text style={{ fontSize: 14, color: '#999', textAlign: 'center', marginTop: 10 }}>
+                <Text style={{ fontSize: 14, color: theme.colors.subText, textAlign: 'center', marginTop: 10 }}>
                   尚無養成紀錄，選擇寵物開始養成吧！
                 </Text>
               )}
@@ -461,9 +610,9 @@ export default function App() {
         onRequestClose={() => setShowDailyReward(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.rewardModal}>
+          <View style={[styles.rewardModal, { backgroundColor: theme.colors.card }]}>
             <View style={styles.rewardHeader}>
-              <Text style={styles.rewardTitle}>🎁 每日登入獎勵</Text>
+              <Text style={[styles.rewardTitle, { color: theme.isDark ? '#90CAF9' : '#1976D2' }]}>🎁 每日登入獎勵</Text>
               <TouchableOpacity 
                 onPress={() => setShowDailyReward(false)}
                 style={styles.closeButton}
@@ -482,11 +631,11 @@ export default function App() {
                 <Text style={styles.rewardAmount}>+20</Text>
               </View>
               
-              <Text style={styles.rewardDescription}>
+              <Text style={[styles.rewardDescription, { color: theme.colors.text }]}>
                 每日登入即可領取冰冰幣獎勵！
               </Text>
               
-              <Text style={styles.rewardNote}>
+              <Text style={[styles.rewardNote, { color: theme.colors.subText }]}>
                 {dailyRewardClaimed ? '今日已領取' : '今日尚未領取'}
               </Text>
             </View>
@@ -515,9 +664,9 @@ export default function App() {
         onRequestClose={() => setShowDiary(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.diaryModal}>
+          <View style={[styles.diaryModal, { backgroundColor: theme.colors.card }]}>
             <View style={styles.diaryHeader}>
-              <Text style={styles.diaryTitle}>📝 今日日記</Text>
+              <Text style={[styles.diaryTitle, { color: theme.isDark ? '#90CAF9' : '#1976D2' }]}>📝 今日日記</Text>
               <TouchableOpacity onPress={() => setShowDiary(false)}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
@@ -526,15 +675,15 @@ export default function App() {
             <ScrollView style={styles.diaryContent}>
               {/* 手寫日記區塊 */}
               <View style={styles.diarySection}>
-                <Text style={styles.sectionTitle}>✍️ 手寫日記</Text>
-                <View style={styles.diaryInputContainer}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>✍️ 手寫日記</Text>
+                <View style={[styles.diaryInputContainer, theme.isDark && { backgroundColor: '#0B1220', borderColor: '#334155' }]}>
                   <TextInput
-                    style={styles.diaryInput}
+                    style={[styles.diaryInput, { color: theme.colors.text }]}
                     placeholder="寫下今天的心情..."
                     multiline={true}
                     value={diaryContent}
                     onChangeText={setDiaryContent}
-                    placeholderTextColor="#999"
+                    placeholderTextColor={theme.isDark ? '#94A3B8' : '#999'}
                   />
                 </View>
                 <TouchableOpacity 
@@ -547,44 +696,44 @@ export default function App() {
 
               {/* 寵物語錄區塊 */}
               <View style={styles.diarySection}>
-                <Text style={styles.sectionTitle}>🐾 寵物語錄</Text>
-                <View style={styles.quoteContainer}>
-                  <Text style={styles.quoteText}>{generatePetQuote()}</Text>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>🐾 寵物語錄</Text>
+                <View style={[styles.quoteContainer, theme.isDark && { backgroundColor: '#0B1220', borderColor: '#334155' }]}>
+                  <Text style={[styles.quoteText, { color: theme.colors.text }]}>{generatePetQuote()}</Text>
                 </View>
               </View>
 
               {/* 今日互動統計 */}
               <View style={styles.diarySection}>
-                <Text style={styles.sectionTitle}>📊 今日互動統計</Text>
-                <View style={styles.statsContainer}>
-                  <View style={styles.statItem}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>📊 今日互動統計</Text>
+                <View style={[styles.statsContainer, theme.isDark && { backgroundColor: '#0B1220', borderWidth: 1, borderColor: '#334155' }]}>
+                  <View style={[styles.statItem, theme.isDark && { borderBottomColor: '#334155' }]}>
                     <Text style={styles.statIcon}>🍖</Text>
-                    <Text style={styles.statLabel}>餵食次數</Text>
-                    <Text style={styles.statValue}>{todayStats.feedCount} 次</Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.text, fontWeight: '600' }]}>餵食次數</Text>
+                    <Text style={[styles.statValue, { color: theme.isDark ? '#FFFFFF' : '#0D47A1' }]}>{todayStats.feedCount} 次</Text>
                   </View>
                   
-                  <View style={styles.statItem}>
+                  <View style={[styles.statItem, theme.isDark && { borderBottomColor: '#334155' }]}>
                     <Text style={styles.statIcon}>🧼</Text>
-                    <Text style={styles.statLabel}>清潔次數</Text>
-                    <Text style={styles.statValue}>{todayStats.cleanCount} 次</Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.text, fontWeight: '600' }]}>清潔次數</Text>
+                    <Text style={[styles.statValue, { color: theme.isDark ? '#FFFFFF' : '#0D47A1' }]}>{todayStats.cleanCount} 次</Text>
                   </View>
                   
-                  <View style={styles.statItem}>
+                  <View style={[styles.statItem, theme.isDark && { borderBottomColor: '#334155' }]}>
                     <Text style={styles.statIcon}>✋</Text>
-                    <Text style={styles.statLabel}>摸摸頭</Text>
-                    <Text style={styles.statValue}>{todayStats.petCount} 次</Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.text, fontWeight: '600' }]}>摸摸頭</Text>
+                    <Text style={[styles.statValue, { color: theme.isDark ? '#FFFFFF' : '#0D47A1' }]}>{todayStats.petCount} 次</Text>
                   </View>
                   
-                  <View style={styles.statItem}>
+                  <View style={[styles.statItem, theme.isDark && { borderBottomColor: '#334155' }]}>
                     <Text style={styles.statIcon}>🌲</Text>
-                    <Text style={styles.statLabel}>散步次數</Text>
-                    <Text style={styles.statValue}>{todayStats.walkCount} 次</Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.text, fontWeight: '600' }]}>散步次數</Text>
+                    <Text style={[styles.statValue, { color: theme.isDark ? '#FFFFFF' : '#0D47A1' }]}>{todayStats.walkCount} 次</Text>
                   </View>
                   
                   <View style={styles.statItem}>
                     <Text style={styles.statIcon}>💗</Text>
-                    <Text style={styles.statLabel}>親密度提升</Text>
-                    <Text style={styles.statValue}>+{todayStats.affectionGained}</Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.text, fontWeight: '600' }]}>親密度提升</Text>
+                    <Text style={[styles.statValue, { color: theme.isDark ? '#FFFFFF' : '#0D47A1' }]}>+{todayStats.affectionGained}</Text>
                   </View>
                 </View>
               </View>
@@ -601,9 +750,9 @@ export default function App() {
         onRequestClose={() => setShowSettings(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.diaryModal}>
+          <View style={[styles.diaryModal, { backgroundColor: theme.colors.card }]}>
             <View style={styles.diaryHeader}>
-              <Text style={styles.diaryTitle}>⚙️ 設定</Text>
+              <Text style={[styles.diaryTitle, { color: theme.isDark ? '#90CAF9' : '#1976D2' }]}>⚙️ 設定</Text>
               <TouchableOpacity onPress={() => setShowSettings(false)}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
@@ -612,32 +761,94 @@ export default function App() {
             <ScrollView style={{ padding: 20 }}>
               {/* 一般設定 */}
               <View style={styles.settingsSection}>
-                <Text style={styles.sectionTitle}>一般</Text>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>一般</Text>
                 <View style={styles.settingsRow}>
-                  <Text style={styles.settingsLabel}>音效</Text>
-                  <Switch value={settings.soundEnabled} onValueChange={(v) => setSettings(s => ({ ...s, soundEnabled: v }))} />
+                  <Text style={[styles.settingsLabel, { color: theme.colors.text }]}>提醒</Text>
+                  <Switch value={settings.reminderEnabled} onValueChange={(v) => setSettings(s => ({ ...s, reminderEnabled: v }))} />
                 </View>
+                {settings.reminderEnabled && (
+                  <View style={[styles.settingsRow, { alignItems: 'center' }]}>
+                    <Text style={[styles.settingsLabel, { color: theme.colors.text, marginRight: 12 }]}>提醒時間</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      {[7,9,12,18,20,21].map(h => (
+                        <TouchableOpacity
+                          key={h}
+                          onPress={() => {
+                            setSettings(s => ({ ...s, reminderHour: h, reminderMinute: 0 }));
+                            setCustomReminderText(`${String(h).padStart(2,'0')}:00`);
+                          }}
+                          style={[
+                            styles.choiceChip,
+                            settings.reminderHour === h && settings.reminderMinute === 0 && styles.choiceChipActive,
+                            { marginRight: 8, backgroundColor: theme.isDark ? '#263238' : '#F0F4F8', borderColor: theme.isDark ? '#455A64' : '#E0E0E0' }
+                          ]}
+                        >
+                          <Text style={[
+                            styles.choiceChipText,
+                            settings.reminderHour === h && settings.reminderMinute === 0 && styles.choiceChipTextActive,
+                            !(settings.reminderHour === h && settings.reminderMinute === 0) && { color: theme.colors.text }
+                          ]}>{h}:00</Text>
+                        </TouchableOpacity>
+                      ))}
+                      <View style={{ width: 10 }} />
+                      <TextInput
+                        style={{
+                          minWidth: 70,
+                          paddingVertical: 8,
+                          paddingHorizontal: 10,
+                          borderWidth: 1,
+                          borderColor: theme.isDark ? '#455A64' : '#E0E0E0',
+                          borderRadius: 12,
+                          color: theme.colors.text,
+                          backgroundColor: theme.isDark ? '#0B1220' : '#FFFFFF',
+                          textAlign: 'center',
+                        }}
+                        placeholder="HH:MM"
+                        placeholderTextColor={theme.isDark ? '#94A3B8' : '#999'}
+                        keyboardType="numeric"
+                        value={customReminderText}
+                        onChangeText={(t) => setCustomReminderText(t)}
+                        onEndEditing={() => {
+                          const m = customReminderText.match(/^(\d{1,2}):(\d{2})$/);
+                          if (m) {
+                            let hh = Math.max(0, Math.min(23, parseInt(m[1], 10)));
+                            let mm = Math.max(0, Math.min(59, parseInt(m[2], 10)));
+                            setSettings(s => ({ ...s, reminderHour: hh, reminderMinute: mm }));
+                            setCustomReminderText(`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`);
+                          } else {
+                            // 還原為目前設定
+                            setCustomReminderText(`${String(settings.reminderHour).padStart(2,'0')}:${String(settings.reminderMinute).padStart(2,'0')}`);
+                          }
+                        }}
+                      />
+                    </View>
+                  </View>
+                )}
                 <View style={styles.settingsRow}>
-                  <Text style={styles.settingsLabel}>震動</Text>
-                  <Switch value={settings.hapticsEnabled} onValueChange={(v) => setSettings(s => ({ ...s, hapticsEnabled: v }))} />
-                </View>
-                <View style={styles.settingsRow}>
-                  <Text style={styles.settingsLabel}>推播通知</Text>
+                  <Text style={[styles.settingsLabel, { color: theme.colors.text }]}>推播通知</Text>
                   <Switch value={settings.notificationsEnabled} onValueChange={(v) => setSettings(s => ({ ...s, notificationsEnabled: v }))} />
                 </View>
               </View>
 
               {/* 外觀 */}
               <View style={styles.settingsSection}>
-                <Text style={styles.sectionTitle}>外觀</Text>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>外觀</Text>
                 <View style={{ flexDirection: 'row' }}>
                   {['light','dark','system'].map(mode => (
                     <TouchableOpacity
                       key={mode}
                       onPress={() => setSettings(s => ({ ...s, theme: mode }))}
-                      style={[styles.choiceChip, settings.theme === mode && styles.choiceChipActive, { marginRight: 8 }]}
+                      style={[
+                        styles.choiceChip,
+                        settings.theme === mode && styles.choiceChipActive,
+                        { marginRight: 8, backgroundColor: theme.isDark ? '#263238' : '#F0F4F8', borderColor: theme.isDark ? '#455A64' : '#E0E0E0' }
+                      ]}
                     >
-                      <Text style={[styles.choiceChipText, settings.theme === mode && styles.choiceChipTextActive]}>
+                      <Text style={[
+                        styles.choiceChipText,
+                        settings.theme === mode && styles.choiceChipTextActive,
+                        !(['dark','light','system'].includes(settings.theme) && settings.theme === mode) && { color: theme.colors.text }
+                      ]}>
                         {mode === 'light' ? '淺色' : mode === 'dark' ? '深色' : '跟隨系統'}
                       </Text>
                     </TouchableOpacity>
@@ -647,7 +858,7 @@ export default function App() {
 
               {/* 語言 */}
               <View style={styles.settingsSection}>
-                <Text style={styles.sectionTitle}>語言</Text>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>語言</Text>
                 <View style={{ flexDirection: 'row' }}>
                   {[
                     { code: 'zh-TW', label: '繁中' },
@@ -656,9 +867,17 @@ export default function App() {
                     <TouchableOpacity
                       key={opt.code}
                       onPress={() => setSettings(s => ({ ...s, language: opt.code }))}
-                      style={[styles.choiceChip, settings.language === opt.code && styles.choiceChipActive, { marginRight: 8 }]}
+                      style={[
+                        styles.choiceChip,
+                        settings.language === opt.code && styles.choiceChipActive,
+                        { marginRight: 8, backgroundColor: theme.isDark ? '#263238' : '#F0F4F8', borderColor: theme.isDark ? '#455A64' : '#E0E0E0' }
+                      ]}
                     >
-                      <Text style={[styles.choiceChipText, settings.language === opt.code && styles.choiceChipTextActive]}>
+                      <Text style={[
+                        styles.choiceChipText,
+                        settings.language === opt.code && styles.choiceChipTextActive,
+                        !(settings.language === opt.code) && { color: theme.colors.text }
+                      ]}>
                         {opt.label}
                       </Text>
                     </TouchableOpacity>
@@ -731,6 +950,8 @@ export default function App() {
         setTodayStats={setTodayStats}
         petQuoteTriggered={petQuoteTriggered}
         setPetQuoteTriggered={setPetQuoteTriggered}
+        isDarkTheme={theme.isDark}
+        language={settings.language}
       />
     );
   } else if (currentScreen === 'detail') {
