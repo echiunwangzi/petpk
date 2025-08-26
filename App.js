@@ -12,16 +12,23 @@ import {
   Modal,
   Alert,
   TextInput,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import PetCareScreen from './PetCareScreen';
 
 export default function App() {
+  const PERSIST_KEYS = {
+    currentPetId: 'PERSIST_CURRENT_PET_ID',
+    settings: 'PERSIST_APP_SETTINGS',
+  };
   const [currentScreen, setCurrentScreen] = useState('home');
   const [selectedPet, setSelectedPet] = useState(null);
   // 不再需要 imagesLoaded 狀態，直接顯示圖片
   // const [imagesLoaded, setImagesLoaded] = useState(false);
   const [showPetCare, setShowPetCare] = useState(false);
+  const [showMyPets, setShowMyPets] = useState(false);
   
   // 每日登入獎勵狀態
   const [showDailyReward, setShowDailyReward] = useState(false);
@@ -31,6 +38,16 @@ export default function App() {
   // 日記本狀態
   const [showDiary, setShowDiary] = useState(false);
   const [diaryContent, setDiaryContent] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState({
+    soundEnabled: true,
+    hapticsEnabled: true,
+    notificationsEnabled: false,
+    theme: 'light',
+    language: 'zh-TW',
+  });
+  const [exportData, setExportData] = useState('');
+  const [importData, setImportData] = useState('');
   const [todayStats, setTodayStats] = useState({
     feedCount: 0,
     cleanCount: 0,
@@ -38,6 +55,7 @@ export default function App() {
     walkCount: 0,
     affectionGained: 0
   });
+  const [petsWithRecords, setPetsWithRecords] = useState(new Set());
 
   // 寵物語錄觸發狀態
   const [petQuoteTriggered, setPetQuoteTriggered] = useState(false);
@@ -83,6 +101,119 @@ export default function App() {
     },
   ];
 
+  // 檢查寵物是否有遊玩紀錄的函數
+  const checkPetRecords = async () => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const petRecordKeys = keys.filter(k => 
+        k.startsWith('PERSIST_PET_STATUS') || 
+        k.startsWith('PERSIST_TRANSACTIONS') || 
+        k.startsWith('PERSIST_DAILY_COUNTERS') ||
+        k.startsWith('PERSIST_SAVED_MONEY') ||
+        k.startsWith('PERSIST_BACKPACK')
+      );
+      
+      // 如果有任何寵物相關的紀錄，檢查實際資料
+      if (petRecordKeys.length > 0) {
+        const petStatusData = await AsyncStorage.getItem('PERSIST_PET_STATUS');
+        const transactionsData = await AsyncStorage.getItem('PERSIST_TRANSACTIONS');
+        const dailyCountersData = await AsyncStorage.getItem('PERSIST_DAILY_COUNTERS');
+        const savedMoneyData = await AsyncStorage.getItem('PERSIST_SAVED_MONEY');
+        
+        // 檢查是否有實際的遊玩數據（不只是初始值）
+        let hasActualData = false;
+        
+        if (petStatusData) {
+          try {
+            const status = JSON.parse(petStatusData);
+            // 如果寵物狀態不是初始值（30,30,30），就算有遊玩紀錄
+            if (status.hunger !== 30 || status.cleanliness !== 30 || status.affection !== 30) {
+              hasActualData = true;
+            }
+          } catch (e) {}
+        }
+        
+        if (transactionsData) {
+          try {
+            const transactions = JSON.parse(transactionsData);
+            // 如果有任何交易紀錄，就算有遊玩紀錄
+            if (Array.isArray(transactions) && transactions.length > 0) {
+              hasActualData = true;
+            }
+          } catch (e) {}
+        }
+        
+        if (dailyCountersData) {
+          try {
+            const counters = JSON.parse(dailyCountersData);
+            // 如果有任何計數器被使用過，就算有遊玩紀錄
+            if (counters.feed > 0 || counters.clean > 0 || counters.pet > 0 || counters.walk > 0) {
+              hasActualData = true;
+            }
+          } catch (e) {}
+        }
+        
+        if (savedMoneyData) {
+          try {
+            const savedMoney = JSON.parse(savedMoneyData);
+            // 如果有存錢紀錄，就算有遊玩紀錄
+            if (savedMoney > 0) {
+              hasActualData = true;
+            }
+          } catch (e) {}
+        }
+        
+        // 如果有實際遊玩數據，就將當前寵物標記為有紀錄
+        if (hasActualData) {
+          const currentPetId = await AsyncStorage.getItem(PERSIST_KEYS.currentPetId);
+          if (currentPetId) {
+            setPetsWithRecords(prev => new Set([...prev, parseInt(currentPetId, 10)]));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('check pet records error', e);
+    }
+  };
+
+  // 啟動時還原已選擇的寵物與設定
+  useEffect(() => {
+    (async () => {
+      try {
+        // 載入已選寵物
+        const idText = await AsyncStorage.getItem(PERSIST_KEYS.currentPetId);
+        const idNum = idText ? parseInt(idText, 10) : null;
+        if (idNum) {
+          const found = pets.find(p => p.id === idNum);
+          if (found) setSelectedPet(found);
+        }
+        
+        // 載入設定
+        const settingsJson = await AsyncStorage.getItem(PERSIST_KEYS.settings);
+        if (settingsJson) {
+          const parsedSettings = JSON.parse(settingsJson);
+          setSettings(prev => ({ ...prev, ...parsedSettings }));
+        }
+
+        // 檢查寵物遊玩紀錄
+        await checkPetRecords();
+      } catch (e) {
+        console.warn('load data error', e);
+      }
+    })();
+  }, []);
+
+  // 設定變更時自動儲存
+  useEffect(() => {
+    (async () => {
+      try {
+        await AsyncStorage.setItem(PERSIST_KEYS.settings, JSON.stringify(settings));
+      } catch (e) {
+        console.warn('save settings error', e);
+      }
+    })();
+  }, [settings]);
+
   // 首頁按鈕
   const menuButtons = [
     { id: 1, icon: '🐾', title: '毛小孩們', color: '#FF6B6B' },
@@ -94,6 +225,9 @@ export default function App() {
   const handlePetSelect = (pet) => {
     setSelectedPet(pet);
     setCurrentScreen('detail');
+    AsyncStorage.setItem(PERSIST_KEYS.currentPetId, String(pet.id)).catch(() => {});
+    // 選擇寵物後，將其標記為有遊玩紀錄（如果用戶開始養成的話）
+    setPetsWithRecords(prev => new Set([...prev, pet.id]));
   };
 
   const handleBack = () => {
@@ -231,6 +365,14 @@ export default function App() {
                   } else if (button.title === '日記本') {
                     console.log('執行日記本功能');
                     handleDiary();
+                  } else if (button.title === '毛小孩們') {
+                    if (selectedPet) {
+                      setShowMyPets(true);
+                    } else {
+                      Alert.alert('提示', '請先選擇一隻寵物再查看毛小孩們');
+                    }
+                  } else if (button.title === '設定') {
+                    setShowSettings(true);
                   }
                 }}
               >
@@ -241,6 +383,75 @@ export default function App() {
           </View>
         </ScrollView>
       </View>
+
+      {/* 毛小孩們模態框 */}
+      <Modal
+        visible={showMyPets}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowMyPets(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.diaryModal}>
+            <View style={styles.diaryHeader}>
+              <Text style={styles.diaryTitle}>🐾 毛小孩們</Text>
+              <TouchableOpacity onPress={() => setShowMyPets(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 20 }}>
+              <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                {selectedPet ? (
+                  <>
+                    <Image source={selectedPet.image} style={{ width: 140, height: 140, borderRadius: 18, marginBottom: 10 }} />
+                    <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 10 }}>{selectedPet.name}</Text>
+                    <TouchableOpacity
+                      onPress={() => { setShowMyPets(false); setShowPetCare(true); }}
+                      style={{ backgroundColor: '#1976D2', borderRadius: 20, paddingVertical: 10, paddingHorizontal: 16 }}
+                    >
+                      <Text style={{ color: 'white', fontSize: 14, fontWeight: 'bold' }}>前往養成</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text style={{ fontSize: 16, color: '#666' }}>尚未選擇寵物</Text>
+                )}
+              </View>
+
+              {petsWithRecords.size > 0 && (
+                <>
+                  <Text style={{ fontSize: 14, color: '#666', marginBottom: 8 }}>切換夥伴</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      {pets.filter(p => petsWithRecords.has(p.id)).map((p) => (
+                        <TouchableOpacity
+                          key={p.id}
+                          onPress={() => { setSelectedPet(p); AsyncStorage.setItem('PERSIST_CURRENT_PET_ID', String(p.id)).catch(() => {}); }}
+                          style={{
+                            alignItems: 'center',
+                            padding: 8,
+                            borderRadius: 12,
+                            borderWidth: selectedPet && selectedPet.id === p.id ? 2 : 1,
+                            borderColor: selectedPet && selectedPet.id === p.id ? '#1976D2' : '#E0E0E0',
+                            backgroundColor: '#FFFFFF',
+                          }}
+                        >
+                          <Image source={p.image} style={{ width: 64, height: 64, borderRadius: 10, marginBottom: 6 }} />
+                          <Text style={{ fontSize: 12, color: '#333' }}>{p.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </>
+              )}
+              {petsWithRecords.size === 0 && (
+                <Text style={{ fontSize: 14, color: '#999', textAlign: 'center', marginTop: 10 }}>
+                  尚無養成紀錄，選擇寵物開始養成吧！
+                </Text>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* 每日登入獎勵模態框 */}
       <Modal
@@ -377,6 +588,85 @@ export default function App() {
                   </View>
                 </View>
               </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 設定模態框 */}
+      <Modal
+        visible={showSettings}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSettings(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.diaryModal}>
+            <View style={styles.diaryHeader}>
+              <Text style={styles.diaryTitle}>⚙️ 設定</Text>
+              <TouchableOpacity onPress={() => setShowSettings(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ padding: 20 }}>
+              {/* 一般設定 */}
+              <View style={styles.settingsSection}>
+                <Text style={styles.sectionTitle}>一般</Text>
+                <View style={styles.settingsRow}>
+                  <Text style={styles.settingsLabel}>音效</Text>
+                  <Switch value={settings.soundEnabled} onValueChange={(v) => setSettings(s => ({ ...s, soundEnabled: v }))} />
+                </View>
+                <View style={styles.settingsRow}>
+                  <Text style={styles.settingsLabel}>震動</Text>
+                  <Switch value={settings.hapticsEnabled} onValueChange={(v) => setSettings(s => ({ ...s, hapticsEnabled: v }))} />
+                </View>
+                <View style={styles.settingsRow}>
+                  <Text style={styles.settingsLabel}>推播通知</Text>
+                  <Switch value={settings.notificationsEnabled} onValueChange={(v) => setSettings(s => ({ ...s, notificationsEnabled: v }))} />
+                </View>
+              </View>
+
+              {/* 外觀 */}
+              <View style={styles.settingsSection}>
+                <Text style={styles.sectionTitle}>外觀</Text>
+                <View style={{ flexDirection: 'row' }}>
+                  {['light','dark','system'].map(mode => (
+                    <TouchableOpacity
+                      key={mode}
+                      onPress={() => setSettings(s => ({ ...s, theme: mode }))}
+                      style={[styles.choiceChip, settings.theme === mode && styles.choiceChipActive, { marginRight: 8 }]}
+                    >
+                      <Text style={[styles.choiceChipText, settings.theme === mode && styles.choiceChipTextActive]}>
+                        {mode === 'light' ? '淺色' : mode === 'dark' ? '深色' : '跟隨系統'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* 語言 */}
+              <View style={styles.settingsSection}>
+                <Text style={styles.sectionTitle}>語言</Text>
+                <View style={{ flexDirection: 'row' }}>
+                  {[
+                    { code: 'zh-TW', label: '繁中' },
+                    { code: 'en', label: 'English' },
+                  ].map(opt => (
+                    <TouchableOpacity
+                      key={opt.code}
+                      onPress={() => setSettings(s => ({ ...s, language: opt.code }))}
+                      style={[styles.choiceChip, settings.language === opt.code && styles.choiceChipActive, { marginRight: 8 }]}
+                    >
+                      <Text style={[styles.choiceChipText, settings.language === opt.code && styles.choiceChipTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+
             </ScrollView>
           </View>
         </View>
@@ -745,6 +1035,87 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  settingsSection: {
+    marginBottom: 24,
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  settingsLabel: {
+    fontSize: 14,
+    color: '#333',
+  },
+  choiceChip: {
+    backgroundColor: '#F0F4F8',
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  choiceChipActive: {
+    backgroundColor: '#1976D2',
+    borderColor: '#1976D2',
+  },
+  choiceChipText: {
+    fontSize: 12,
+    color: '#333',
+    fontWeight: '600',
+  },
+  choiceChipTextActive: {
+    color: '#FFFFFF',
+  },
+  primaryButton: {
+    backgroundColor: '#1976D2',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  exportBox: {
+    backgroundColor: '#F8FBFF',
+    borderWidth: 1,
+    borderColor: '#E3F2FD',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 10,
+  },
+  exportLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 6,
+  },
+  exportText: {
+    fontSize: 12,
+    color: '#424242',
+  },
+  importBox: {
+    backgroundColor: '#FFF8F0',
+    borderWidth: 1,
+    borderColor: '#FFB74D',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 12,
+  },
+  importInput: {
+    minHeight: 80,
+    fontSize: 12,
+    color: '#424242',
+    textAlignVertical: 'top',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    marginBottom: 10,
   },
   diaryModal: {
     backgroundColor: 'white',

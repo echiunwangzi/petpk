@@ -45,7 +45,14 @@ export default function PetCareScreen({
     accountingSearchText: 'PERSIST_ACCOUNTING_SEARCH_TEXT',
     accountingSelectedMonth: 'PERSIST_ACCOUNTING_SELECTED_MONTH',
     accountingSelectedCategories: 'PERSIST_ACCOUNTING_SELECTED_CATEGORIES',
+    showAccountingPage: 'PERSIST_SHOW_ACCOUNTING_PAGE',
+    showSavingsPage: 'PERSIST_SHOW_SAVINGS_PAGE',
+    showDreamSavingsPage: 'PERSIST_SHOW_DREAM_SAVINGS_PAGE',
+    showGoalEditPage: 'PERSIST_SHOW_GOAL_EDIT_PAGE',
   };
+
+  // 資料是否已完成還原（避免初始化時覆寫儲存資料）
+  const hydratedRef = useRef(false);
 
   const safeParseJson = (text, fallback = null) => {
     try {
@@ -147,6 +154,7 @@ export default function PetCareScreen({
 
   const [showBackpack, setShowBackpack] = useState(false);
   const [showShop, setShowShop] = useState(false);
+  const [showMyPets, setShowMyPets] = useState(false);
   // 已拆分為 depositAmount / withdrawAmount
   const [savedMoney, setSavedMoney] = useState(0);
   const [depositAmount, setDepositAmount] = useState('');
@@ -460,6 +468,10 @@ export default function PetCareScreen({
           PERSIST_KEYS.accountingSearchText,
           PERSIST_KEYS.accountingSelectedMonth,
           PERSIST_KEYS.accountingSelectedCategories,
+          PERSIST_KEYS.showAccountingPage,
+          PERSIST_KEYS.showSavingsPage,
+          PERSIST_KEYS.showDreamSavingsPage,
+          PERSIST_KEYS.showGoalEditPage,
         ]);
         const map = Object.fromEntries(entries);
 
@@ -473,14 +485,10 @@ export default function PetCareScreen({
         if (storedDreamPlans) setDreamPlans(storedDreamPlans);
 
         const storedSelectedDreamPlanId = safeParseJson(map[PERSIST_KEYS.selectedDreamPlanId], null);
-        if (storedSelectedDreamPlanId !== null && storedSelectedDreamPlanId !== undefined) {
-          setSelectedDreamPlanId(storedSelectedDreamPlanId);
-        }
+        if (storedSelectedDreamPlanId) setSelectedDreamPlanId(storedSelectedDreamPlanId);
 
         const storedSelectedWithdrawDreamPlanId = safeParseJson(map[PERSIST_KEYS.selectedWithdrawDreamPlanId], null);
-        if (storedSelectedWithdrawDreamPlanId !== null && storedSelectedWithdrawDreamPlanId !== undefined) {
-          setSelectedWithdrawDreamPlanId(storedSelectedWithdrawDreamPlanId);
-        }
+        if (storedSelectedWithdrawDreamPlanId) setSelectedWithdrawDreamPlanId(storedSelectedWithdrawDreamPlanId);
 
         const storedPetStatus = safeParseJson(map[PERSIST_KEYS.petStatus], null);
         if (storedPetStatus) setPetStatus(storedPetStatus);
@@ -505,31 +513,47 @@ export default function PetCareScreen({
 
         const storedSelectedCategories = safeParseJson(map[PERSIST_KEYS.accountingSelectedCategories], null);
         if (Array.isArray(storedSelectedCategories)) setSelectedCategories(storedSelectedCategories);
+
+        const storedShowAccounting = safeParseJson(map[PERSIST_KEYS.showAccountingPage], null);
+        const storedShowSavings = safeParseJson(map[PERSIST_KEYS.showSavingsPage], null);
+        const storedShowDream = safeParseJson(map[PERSIST_KEYS.showDreamSavingsPage], null);
+        const storedShowGoalEdit = safeParseJson(map[PERSIST_KEYS.showGoalEditPage], null);
+        if (typeof storedShowAccounting === 'boolean') setShowAccountingPage(storedShowAccounting);
+        if (typeof storedShowSavings === 'boolean') setShowSavingsPage(storedShowSavings);
+        if (typeof storedShowDream === 'boolean') setShowDreamSavingsPage(storedShowDream);
+        if (typeof storedShowGoalEdit === 'boolean') setShowGoalEditPage(storedShowGoalEdit);
       } catch (e) {
         console.warn('AsyncStorage load error:', e);
       }
+      hydratedRef.current = true;
     })();
   }, []);
   
   // 狀態變更時儲存（財務相關）
-  useEffect(() => { saveJson(PERSIST_KEYS.transactions, transactions); }, [transactions]);
-  useEffect(() => { saveJson(PERSIST_KEYS.savedMoney, savedMoney); }, [savedMoney]);
-  useEffect(() => { saveJson(PERSIST_KEYS.dreamPlans, dreamPlans); }, [dreamPlans]);
-  useEffect(() => { saveJson(PERSIST_KEYS.selectedDreamPlanId, selectedDreamPlanId); }, [selectedDreamPlanId]);
-  useEffect(() => { saveJson(PERSIST_KEYS.selectedWithdrawDreamPlanId, selectedWithdrawDreamPlanId); }, [selectedWithdrawDreamPlanId]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.transactions, transactions); }, [transactions]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.savedMoney, savedMoney); }, [savedMoney]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.dreamPlans, dreamPlans); }, [dreamPlans]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.selectedDreamPlanId, selectedDreamPlanId); }, [selectedDreamPlanId]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.selectedWithdrawDreamPlanId, selectedWithdrawDreamPlanId); }, [selectedWithdrawDreamPlanId]);
 
   // 狀態變更時儲存（寵物與日常相關）
-  useEffect(() => { saveJson(PERSIST_KEYS.petStatus, petStatus); }, [petStatus]);
-  useEffect(() => { saveJson(PERSIST_KEYS.dailyCounters, dailyCounters); }, [dailyCounters]);
-  useEffect(() => { saveJson(PERSIST_KEYS.walkStreak, walkStreak); }, [walkStreak]);
-  useEffect(() => { saveJson(PERSIST_KEYS.backpack, backpack); }, [backpack]);
-  useEffect(() => { saveJson(PERSIST_KEYS.savingsGoals, savingsGoals); }, [savingsGoals]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.petStatus, petStatus); }, [petStatus]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.dailyCounters, dailyCounters); }, [dailyCounters]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.walkStreak, walkStreak); }, [walkStreak]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.backpack, backpack); }, [backpack]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.savingsGoals, savingsGoals); }, [savingsGoals]);
 
   // 記帳頁面 UI 狀態變更時儲存
-  useEffect(() => { saveJson(PERSIST_KEYS.accountingSearchText, searchText); }, [searchText]);
-  useEffect(() => { saveJson(PERSIST_KEYS.accountingSelectedMonth, selectedMonth); }, [selectedMonth]);
-  useEffect(() => { saveJson(PERSIST_KEYS.accountingSelectedCategories, selectedCategories); }, [selectedCategories]);
-  
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.accountingSearchText, searchText); }, [searchText]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.accountingSelectedMonth, selectedMonth); }, [selectedMonth]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.accountingSelectedCategories, selectedCategories); }, [selectedCategories]);
+
+  // 頁面顯示狀態持久化
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.showAccountingPage, showAccountingPage); }, [showAccountingPage]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.showSavingsPage, showSavingsPage); }, [showSavingsPage]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.showDreamSavingsPage, showDreamSavingsPage); }, [showDreamSavingsPage]);
+  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.showGoalEditPage, showGoalEditPage); }, [showGoalEditPage]);
+
   // 簡化圖片載入 - 立即載入
   useEffect(() => {
     console.log('PetCareScreen 圖片載入完成');
@@ -1398,11 +1422,11 @@ export default function PetCareScreen({
     setAmountInput('');
     setTransactionNote('');
 
-    Alert.alert('記帳成功', `已新增${transactionType === 'expense' ? '支出' : '收入'}：$${amount}｜+2 冰冰幣`);
+
 
     // 顯示大字彈幕
     try { if (accountingDanmakuTimer.current) { clearTimeout(accountingDanmakuTimer.current); } } catch (e) {}
-    setAccountingDanmakuText(`${transactionType === 'expense' ? '支出' : '收入'} $${amount}｜+2 冰冰幣`);
+    setAccountingDanmakuText(`${transactionType === 'expense' ? '支出' : '收入'} $${amount} ｜ +2 🧊`);
     setShowAccountingDanmaku(true);
     accountingDanmakuTimer.current = setTimeout(() => {
       setShowAccountingDanmaku(false);
@@ -1542,28 +1566,53 @@ export default function PetCareScreen({
       <View style={styles.newFunctionRow}>
 
 
-        <TouchableOpacity style={styles.newFunctionButton} onPress={() => setShowAccountingPage(true)}>
-          <Text style={styles.newFunctionIcon}>🧾</Text>
-          <Text style={styles.newFunctionText}>記帳</Text>
+        <TouchableOpacity style={styles.accountingButton} onPress={() => setShowAccountingPage(true)}>
+          <Text style={styles.accountingButtonIcon}>🧾</Text>
+          <Text style={styles.accountingButtonText}>記帳</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.newFunctionButton} onPress={() => setShowBackpack(true)}>
-          <Text style={styles.newFunctionIcon}>📦</Text>
-          <Text style={styles.newFunctionText}>背包</Text>
+        <TouchableOpacity style={styles.backpackButton} onPress={() => setShowBackpack(true)}>
+          <Text style={styles.backpackButtonIcon}>📦</Text>
+          <Text style={styles.backpackButtonText}>背包</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.newFunctionButton} onPress={() => setShowShop(true)}>
-          <Text style={styles.newFunctionIcon}>🛍️</Text>
-          <Text style={styles.newFunctionText}>商店</Text>
+        <TouchableOpacity style={styles.shopButton} onPress={() => setShowShop(true)}>
+          <Text style={styles.shopButtonIcon}>🛍️</Text>
+          <Text style={styles.shopButtonText}>商店</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.newFunctionButton} onPress={() => setShowSavingsPage(true)}>
-          <Ionicons name="add-circle-outline" size={18} color="#1976D2" />
-          <Text style={styles.newFunctionText}>存錢</Text>
+        <TouchableOpacity style={styles.savingsButton} onPress={() => setShowSavingsPage(true)}>
+          <Text style={styles.savingsButtonIcon}>💰</Text>
+          <Text style={styles.savingsButtonText}>存錢</Text>
         </TouchableOpacity>
       </View>
 
       {/* 功能模態框 */}
+
+      {/* 毛小孩們 */}
+      <Modal
+        visible={showMyPets}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowMyPets(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.backpackModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🐾 毛小孩們</Text>
+              <TouchableOpacity onPress={() => setShowMyPets(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            <View style={[styles.modalContent, { padding: 20 }]}>
+              <View style={{ alignItems: 'center' }}>
+                <Image source={selectedPet.image} style={{ width: 160, height: 160, borderRadius: 20 }} />
+                <Text style={[styles.sectionTitle, { marginTop: 10 }]}>{selectedPet.name}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showBackpack}
@@ -3127,6 +3176,107 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '600',
   },
+  // 記帳按鈕特別樣式
+  accountingButton: {
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 18,
+    minWidth: 70,
+    shadowColor: '#2196F3',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 6,
+    borderWidth: 2,
+    borderColor: '#90CAF9',
+  },
+  accountingButtonIcon: {
+    fontSize: 26,
+    marginBottom: 3,
+  },
+  accountingButtonText: {
+    fontSize: 12,
+    color: '#1565C0',
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  // 背包按鈕特別樣式
+  backpackButton: {
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: '#F3E5F5',
+    borderRadius: 18,
+    minWidth: 70,
+    shadowColor: '#9C27B0',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 6,
+    borderWidth: 2,
+    borderColor: '#CE93D8',
+  },
+  backpackButtonIcon: {
+    fontSize: 26,
+    marginBottom: 3,
+  },
+  backpackButtonText: {
+    fontSize: 12,
+    color: '#7B1FA2',
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  // 商店按鈕特別樣式
+  shopButton: {
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: '#E8F5E8',
+    borderRadius: 18,
+    minWidth: 70,
+    shadowColor: '#4CAF50',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 6,
+    borderWidth: 2,
+    borderColor: '#A5D6A7',
+  },
+  shopButtonIcon: {
+    fontSize: 26,
+    marginBottom: 3,
+  },
+  shopButtonText: {
+    fontSize: 12,
+    color: '#2E7D32',
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  // 存錢按鈕特別樣式
+  savingsButton: {
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: '#FFE0B2',
+    borderRadius: 20,
+    minWidth: 70,
+    shadowColor: '#FF9800',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: '#FFB74D',
+    transform: [{ scale: 1 }],
+  },
+  savingsButtonIcon: {
+    fontSize: 28,
+    marginBottom: 2,
+  },
+  savingsButtonText: {
+    fontSize: 12,
+    color: '#E65100',
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -4401,7 +4551,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingLeft: 12,
+    paddingRight: 50,
     backgroundColor: '#FFFFFF',
     width: '100%',
   },
@@ -4425,12 +4576,12 @@ const styles = StyleSheet.create({
     color: '#999',
   },
   transactionDate: {
-    width: 100,
+    width: 80,
     fontSize: 14,
     color: '#424242',
     textAlign: 'left',
     fontWeight: '500',
-    marginLeft: 12,
+    marginRight: 0,
   },
   // 記帳全頁
   accountingPage: {
@@ -4577,16 +4728,24 @@ const styles = StyleSheet.create({
     zIndex: 999,
   },
   accountingDanmakuText: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#1B5E20',
-    backgroundColor: 'rgba(200, 230, 201, 0.95)',
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 16,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#E65100',
+    backgroundColor: 'rgba(255, 235, 205, 0.98)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 25,
     borderWidth: 2,
-    borderColor: '#2E7D32',
+    borderColor: '#FFB74D',
     overflow: 'hidden',
+    shadowColor: '#FF8F00',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 8,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+    transform: [{ scale: 1 }],
   },
   goalInput: {
     flex: 1,
