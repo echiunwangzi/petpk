@@ -30,7 +30,9 @@ export default function PetCareScreen({
   petQuoteTriggered,
   setPetQuoteTriggered,
   isDarkTheme,
-  language
+  language,
+  iceCoins,
+  setIceCoins
 }) {
   // 持久化鍵值
   const PERSIST_KEYS = {
@@ -383,6 +385,10 @@ export default function PetCareScreen({
       Alert.alert('❌ 存錢失敗', '請輸入大於 0 的金額！');
       return;
     }
+    if (amount > 99999999) {
+      Alert.alert('❌ 存錢失敗', '存入金額最多 8 位數（上限 99,999,999）');
+      return;
+    }
     setSavedMoney(prev => prev + amount);
     setDreamPlans(prev => prev.map(p => {
       if (p.id !== planId) return p;
@@ -607,6 +613,10 @@ export default function PetCareScreen({
       Alert.alert('❌ 存錢失敗', '請輸入大於 0 的金額！');
       return;
     }
+    if (amount > 99999999) {
+      Alert.alert('❌ 存錢失敗', '存入金額最多 8 位數（上限 99,999,999）');
+      return;
+    }
     if (!selectedDreamPlanId) {
       Alert.alert('❌ 存錢失敗', '請先選擇一個夢想計畫');
       return;
@@ -632,7 +642,15 @@ export default function PetCareScreen({
 
   // 取出存錢筒中的錢
   const handleWithdrawMoney = (amount) => {
-    if (amount <= 0 || amount > savedMoney) {
+    if (amount <= 0) {
+      Alert.alert('❌ 取出失敗', '金額無效或儲蓄餘額不足！');
+      return;
+    }
+    if (amount > 99999999) {
+      Alert.alert('❌ 取出失敗', '取出金額最多 8 位數（上限 99,999,999）');
+      return;
+    }
+    if (amount > savedMoney) {
       Alert.alert('❌ 取出失敗', '金額無效或儲蓄餘額不足！');
       return;
     }
@@ -1080,10 +1098,7 @@ export default function PetCareScreen({
       }));
 
       // 更新冰冰幣
-      setBackpack(prev => ({
-        ...prev,
-        iceCoins: prev.iceCoins + totalCoins
-      }));
+      setIceCoins(prev => prev + totalCoins);
 
       // 更新計數器
       setDailyCounters(prev => ({
@@ -1141,10 +1156,7 @@ export default function PetCareScreen({
       }));
 
       // 更新冰冰幣
-      setBackpack(prev => ({
-        ...prev,
-        iceCoins: prev.iceCoins + totalCoins
-      }));
+      setIceCoins(prev => prev + totalCoins);
 
       // 更新計數器
       setDailyCounters(prev => ({
@@ -1206,10 +1218,7 @@ export default function PetCareScreen({
       affection: newAffection,
     }));
 
-    setBackpack(prev => ({
-      ...prev,
-      iceCoins: prev.iceCoins + coinsGained
-    }));
+    setIceCoins(prev => prev + coinsGained);
 
     // 更新摸摸頭專用計數器
     setDailyCounters(prev => ({
@@ -1267,10 +1276,7 @@ export default function PetCareScreen({
       }));
 
       // 更新冰冰幣
-      setBackpack(prev => ({
-        ...prev,
-        iceCoins: prev.iceCoins + totalCoins
-      }));
+      setIceCoins(prev => prev + totalCoins);
 
       // 更新計數器
       setDailyCounters(prev => ({
@@ -1312,13 +1318,13 @@ export default function PetCareScreen({
 
   // 購買功能
   const handlePurchase = (item) => {
-    if (backpack.iceCoins >= item.price) {
-      // 一次性更新背包（扣除冰冰幣並增加商品數量）
+    if (iceCoins >= item.price) {
+      // 扣除冰冰幣
+      setIceCoins(prev => prev - item.price);
+      
+      // 更新背包（增加商品數量）
       setBackpack(prev => {
-        const newBackpack = {
-          ...prev,
-          iceCoins: prev.iceCoins - item.price
-        };
+        const newBackpack = { ...prev };
 
         // 根據商品類型增加數量
         if (item.category === 'food' && newBackpack.food[item.id]) {
@@ -1484,7 +1490,7 @@ export default function PetCareScreen({
               onError={(error) => console.log('冰晶藍幣圖片載入失敗:', error)}
               onLoad={() => console.log('冰晶藍幣圖片載入成功')}
             />
-            <Text style={[styles.iceCoinText, { color: themeColors.text }]}>{backpack.iceCoins}</Text>
+            <Text style={[styles.iceCoinText, { color: themeColors.text }]}>{iceCoins}</Text>
           </View>
         </View>
       </View>
@@ -1760,7 +1766,7 @@ export default function PetCareScreen({
                       onError={(error) => console.log('背包冰晶藍幣圖片載入失敗:', error)}
                       onLoad={() => console.log('背包冰晶藍幣圖片載入成功')}
                     />
-                    <Text style={styles.iceCoinAmount}>{backpack.iceCoins}</Text>
+                    <Text style={styles.iceCoinAmount}>{iceCoins}</Text>
                   </View>
                 </View>
               </View>
@@ -1819,12 +1825,14 @@ export default function PetCareScreen({
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.categoryChipsRow}>
                   {accountingCategories
-                    .filter(cat => cat.type === transactionType)
                     .map(cat => (
                   <TouchableOpacity 
                         key={cat.id}
                         style={[styles.categoryChip, isDarkTheme && { backgroundColor: '#0B1220', borderColor: '#334155' }, transactionCategory === cat.id && styles.categoryChipActive]}
-                        onPress={() => setTransactionCategory(cat.id)}
+                        onPress={() => {
+                          setTransactionCategory(cat.id);
+                          setTransactionType(cat.type);
+                        }}
                       >
                         <Text style={styles.categoryChipIcon}>{cat.icon}</Text>
                         <Text style={[styles.categoryChipText, isDarkTheme && { color: themeColors.text }, transactionCategory === cat.id && styles.categoryChipTextActive]}>
@@ -2109,12 +2117,14 @@ export default function PetCareScreen({
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={styles.categoryChipsRow}>
                     {accountingCategories
-                      .filter(cat => cat.type === editType)
                       .map(cat => (
                       <TouchableOpacity 
                           key={cat.id}
                           style={[styles.categoryChip, editCategory === cat.id && styles.categoryChipActive]}
-                          onPress={() => setEditCategory(cat.id)}
+                          onPress={() => {
+                            setEditCategory(cat.id);
+                            setEditType(cat.type);
+                          }}
                       >
                           <Text style={styles.categoryChipIcon}>{cat.icon}</Text>
                           <Text style={[styles.categoryChipText, editCategory === cat.id && styles.categoryChipTextActive]}>
@@ -2177,7 +2187,7 @@ export default function PetCareScreen({
                   onError={(error) => console.log('商店冰晶藍幣圖片載入失敗:', error)}
                   onLoad={() => console.log('商店冰晶藍幣圖片載入成功')}
                 />
-                <Text style={styles.shopBalanceText}>餘額：{backpack.iceCoins} 冰冰幣</Text>
+                <Text style={styles.shopBalanceText}>餘額：{iceCoins} 冰冰幣</Text>
               </View>
               
               <ScrollView style={styles.shopContent} showsVerticalScrollIndicator={false}>
@@ -2587,8 +2597,13 @@ export default function PetCareScreen({
                     placeholder="輸入金額"
                     keyboardType="numeric"
                     value={depositAmount}
-                    maxLength={6}
-                    onChangeText={(t) => setDepositAmount(t.replace(/[^0-9]/g,'').slice(0,6))}
+                    onChangeText={(t) => {
+                      const digits = t.replace(/[^0-9]/g,'');
+                      if (digits.length > 8) {
+                        Alert.alert('❌ 金額過大', '存入金額最多 8 位數（上限 99,999,999）');
+                      }
+                      setDepositAmount(digits.slice(0,8));
+                    }}
                     placeholderTextColor="#FFA726"
                   />
                   <TouchableOpacity 
@@ -2641,8 +2656,13 @@ export default function PetCareScreen({
                     placeholder="輸入金額"
                     keyboardType="numeric"
                     value={withdrawAmount}
-                    maxLength={6}
-                    onChangeText={(t) => setWithdrawAmount(t.replace(/[^0-9]/g,'').slice(0,6))}
+                    onChangeText={(t) => {
+                      const digits = t.replace(/[^0-9]/g,'');
+                      if (digits.length > 8) {
+                        Alert.alert('❌ 金額過大', '取出金額最多 8 位數（上限 99,999,999）');
+                      }
+                      setWithdrawAmount(digits.slice(0,8));
+                    }}
                     placeholderTextColor="#999"
                   />
                   <TouchableOpacity 
@@ -2880,46 +2900,62 @@ export default function PetCareScreen({
                 placeholderTextColor="#999"
               />
 
-              <TouchableOpacity
-                style={styles.dreamCreateButton}
-                onPress={() => {
-                  const title = dreamForm.title.trim();
-                  if (!title) {
-                    Alert.alert('❌ 建立失敗', '請輸入計畫標題');
-                    return;
-                  }
-                  const target = dreamForm.targetText ? parseInt(dreamForm.targetText) : null;
-                  const startDateText = dreamForm.startDateText ? dreamForm.startDateText.trim() : '';
-                  const endDateText = dreamForm.endDateText ? dreamForm.endDateText.trim() : '';
-                  if (editingPlanId) {
-                    setDreamPlans(prev => prev.map(p => p.id === editingPlanId ? {
-                      ...p,
-                      title,
-                      target,
-                      startDateText,
-                      endDateText,
-                    } : p));
-                    setEditingPlanId(null);
-                    setEditingPlanForm({ title: '', targetText: '', startDateText: '', endDateText: '' });
-                    Alert.alert('✅ 已更新', '已更新夢想存錢計畫');
-                  } else {
-                    const newPlan = {
-                      id: Date.now(),
-                      title,
-                      target,
-                      current: 0,
-                      startDateText,
-                      endDateText,
-                      createdAt: new Date().toISOString(),
-                    };
-                    setDreamPlans(prev => [newPlan, ...prev]);
-                    Alert.alert('✅ 已建立', '已新增夢想存錢計畫');
-                  }
-                  setDreamForm({ title: '', targetText: '', startDateText: '', endDateText: '' });
-                }}
-              >
-                <Text style={styles.dreamCreateButtonText}>{editingPlanId ? '更新計畫' : '建立計畫'}</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  style={styles.dreamCreateButton}
+                  onPress={() => {
+                    // 根據是否在編輯模式決定使用哪個表單的值
+                    const currentForm = editingPlanId ? editingPlanForm : dreamForm;
+                    const title = currentForm.title.trim();
+                    if (!title) {
+                      Alert.alert('❌ 建立失敗', '請輸入計畫標題');
+                      return;
+                    }
+                    const target = currentForm.targetText ? parseInt(currentForm.targetText) : null;
+                    const startDateText = currentForm.startDateText ? currentForm.startDateText.trim() : '';
+                    const endDateText = currentForm.endDateText ? currentForm.endDateText.trim() : '';
+                    if (editingPlanId) {
+                      setDreamPlans(prev => prev.map(p => p.id === editingPlanId ? {
+                        ...p,
+                        title,
+                        target,
+                        startDateText,
+                        endDateText,
+                      } : p));
+                      setEditingPlanId(null);
+                      setEditingPlanForm({ title: '', targetText: '', startDateText: '', endDateText: '' });
+                      Alert.alert('✅ 已更新', '已更新夢想存錢計畫');
+                    } else {
+                      const newPlan = {
+                        id: Date.now(),
+                        title,
+                        target,
+                        current: 0,
+                        startDateText,
+                        endDateText,
+                        createdAt: new Date().toISOString(),
+                      };
+                      setDreamPlans(prev => [newPlan, ...prev]);
+                      Alert.alert('✅ 已建立', '已新增夢想存錢計畫');
+                    }
+                    setDreamForm({ title: '', targetText: '', startDateText: '', endDateText: '' });
+                  }}
+                >
+                  <Text style={styles.dreamCreateButtonText}>{editingPlanId ? '更新計畫' : '建立計畫'}</Text>
+                </TouchableOpacity>
+                
+                {editingPlanId && (
+                  <TouchableOpacity
+                    style={[styles.dreamCreateButton, { backgroundColor: '#E0E0E0' }]}
+                    onPress={() => {
+                      setEditingPlanId(null);
+                      setEditingPlanForm({ title: '', targetText: '', startDateText: '', endDateText: '' });
+                    }}
+                  >
+                    <Text style={[styles.dreamCreateButtonText, { color: '#666' }]}>取消編輯</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
 
             {dreamPlans.length > 0 && (
@@ -2978,7 +3014,13 @@ export default function PetCareScreen({
                         style={[styles.dreamInput, { flex: 1, marginBottom: 0 }]}
                         placeholder="快速存入金額"
                         value={dreamPlanInputs[plan.id] ?? ''}
-                        onChangeText={(t) => setDreamPlanInputs(prev => ({ ...prev, [plan.id]: t.replace(/[^0-9]/g,'').slice(0,9) }))}
+                        onChangeText={(t) => {
+                          const digits = t.replace(/[^0-9]/g,'');
+                          if (digits.length > 8) {
+                            Alert.alert('❌ 金額過大', '存入金額最多 8 位數（上限 99,999,999）');
+                          }
+                          setDreamPlanInputs(prev => ({ ...prev, [plan.id]: digits.slice(0,8) }));
+                        }}
                         keyboardType="numeric"
                         placeholderTextColor="#999"
                       />
@@ -3093,30 +3135,30 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   statusBars: {
-    paddingHorizontal: 40,
-    paddingVertical: 15,
+    paddingHorizontal: 30, // 從 40 減少到 30
+    paddingVertical: 10,   // 從 15 減少到 10
     backgroundColor: 'white',
   },
   statusItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6, // 從 8 減少到 6
   },
   statusIcon: {
-    fontSize: 20,
-    width: 30,
+    fontSize: 18, // 從 20 減少到 18
+    width: 25,    // 從 30 減少到 25
   },
   progressContainer: {
     flex: 1,
-    height: 12,
+    height: 10,        // 從 12 減少到 10
     backgroundColor: '#E0E0E0',
-    borderRadius: 6,
-    marginHorizontal: 10,
+    borderRadius: 5,   // 從 6 減少到 5
+    marginHorizontal: 8, // 從 10 減少到 8
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
-    borderRadius: 6,
+    borderRadius: 5, // 從 6 減少到 5，與 progressContainer 一致
   },
   hungerBar: {
     backgroundColor: '#FF6B6B',
@@ -3128,9 +3170,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFE66D',
   },
   statusValue: {
-    fontSize: 14,
+    fontSize: 12,     // 從 14 減少到 12
     fontWeight: 'bold',
-    width: 40,
+    width: 35,        // 從 40 減少到 35
     textAlign: 'right',
   },
   statusValueLight: {
@@ -3138,9 +3180,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E0E0E0',
-    borderRadius: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 4,
+    borderRadius: 5,     // 從 6 減少到 5
+    paddingVertical: 1,  // 從 2 減少到 1
+    paddingHorizontal: 3, // 從 4 減少到 3
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -3152,9 +3194,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#0B1220',
     borderWidth: 1,
     borderColor: '#334155',
-    borderRadius: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 4,
+    borderRadius: 5,     // 從 6 減少到 5
+    paddingVertical: 1,  // 從 2 減少到 1
+    paddingHorizontal: 3, // 從 4 減少到 3
   },
   interactionButtons: {
     flexDirection: 'row',

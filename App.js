@@ -14,18 +14,22 @@ import {
   TextInput,
   Switch,
   useColorScheme,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import PetCareScreen from './PetCareScreen';
-import * as Notifications from 'expo-notifications';
+
 
 export default function App() {
   const PERSIST_KEYS = {
     currentPetId: 'PERSIST_CURRENT_PET_ID',
     settings: 'PERSIST_APP_SETTINGS',
+    diaryEntries: 'PERSIST_DIARY_ENTRIES',
+    lastClaimDate: 'PERSIST_LAST_CLAIM_DATE',
+    iceCoins: 'PERSIST_ICE_COINS',
   };
-  const [currentScreen, setCurrentScreen] = useState('home');
+
   const [selectedPet, setSelectedPet] = useState(null);
   // 不再需要 imagesLoaded 狀態，直接顯示圖片
   // const [imagesLoaded, setImagesLoaded] = useState(false);
@@ -40,7 +44,12 @@ export default function App() {
   // 日記本狀態
   const [showDiary, setShowDiary] = useState(false);
   const [diaryContent, setDiaryContent] = useState('');
+  const [diaryEntries, setDiaryEntries] = useState([]);
+  const [showDiaryEntry, setShowDiaryEntry] = useState(false);
+  const [selectedDiaryEntry, setSelectedDiaryEntry] = useState(null);
+  const [showDiaryHistory, setShowDiaryHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
   const [settings, setSettings] = useState({
     soundEnabled: true,
     hapticsEnabled: true,
@@ -48,13 +57,15 @@ export default function App() {
     reminderEnabled: false,
     reminderHour: 20,
     reminderMinute: 0,
+    reminderConfirmed: false,
     theme: 'light',
-    language: 'zh-TW',
+    language: 'zh-TW', // 固定為繁體中文
+
   });
   // 簡易多語系
   const i18n = {
     'zh-TW': {
-      appTitle: '寵物軍團',
+      appTitle: 'Pet Q',
       subtitle: '與你的毛小孩一起成長',
       panelTitle: '功能面板',
       menu_myPets: '毛小孩們',
@@ -75,6 +86,12 @@ export default function App() {
       diaryTitle: '📝 今日日記',
       handwritingDiary: '✍️ 手寫日記',
       saveDiary: '保存日記',
+      diaryHistory: '🗂 歷史紀錄',
+      diaryNone: '尚無日記紀錄',
+      viewDiary: '查看',
+      delete: '刪除',
+      diaryContentTitle: '📖 日記內容',
+      diarySaveEmpty: '請先輸入日記內容',
       petQuotesTitle: '🐾 寵物語錄',
       todayStatsTitle: '📊 今日互動統計',
       stat_feed: '餵食次數',
@@ -83,16 +100,12 @@ export default function App() {
       stat_walk: '散步次數',
       stat_affection: '親密度提升',
       settingsTitle: '⚙️ 設定',
-      general: '一般',
       appearance: '外觀',
-      languageLabel: '語言',
-      reminder: '提醒',
-      reminderTime: '提醒時間',
-      notifications: '推播通知',
+
       theme_light: '淺色', theme_dark: '深色', theme_system: '跟隨系統',
     },
     en: {
-      appTitle: 'Pet Legion',
+      appTitle: 'Pet Q',
       subtitle: 'Grow with your pet companions',
       panelTitle: 'Features',
       menu_myPets: 'My Pets',
@@ -113,6 +126,12 @@ export default function App() {
       diaryTitle: '📝 Today\'s Diary',
       handwritingDiary: '✍️ Handwritten Diary',
       saveDiary: 'Save Diary',
+      diaryHistory: '🗂 History',
+      diaryNone: 'No diary entries yet',
+      viewDiary: 'View',
+      delete: 'Delete',
+      diaryContentTitle: '📖 Diary Entry',
+      diarySaveEmpty: 'Please write something first',
       petQuotesTitle: '🐾 Pet Quotes',
       todayStatsTitle: '📊 Today\'s Interactions',
       stat_feed: 'Feeds',
@@ -121,21 +140,53 @@ export default function App() {
       stat_walk: 'Walks',
       stat_affection: 'Affection Gained',
       settingsTitle: '⚙️ Settings',
-      general: 'General',
       appearance: 'Appearance',
-      languageLabel: 'Language',
-      reminder: 'Reminder',
-      reminderTime: 'Reminder Time',
-      notifications: 'Notifications',
+
       theme_light: 'Light', theme_dark: 'Dark', theme_system: 'System',
     },
   };
   const t = (key) => (i18n[settings.language] && i18n[settings.language][key]) || (i18n['zh-TW'][key] || key);
-  const [customReminderText, setCustomReminderText] = useState(() => {
-    const hh = String(settings.reminderHour || 20).padStart(2, '0');
-    const mm = String(settings.reminderMinute || 0).padStart(2, '0');
-    return `${hh}:${mm}`;
-  });
+  const formatDiaryTimestamp = (isoText) => {
+    try {
+      const d = new Date(isoText);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return `${y}/${m}/${day} ${hh}:${mm}`;
+    } catch (e) {
+      return isoText || '';
+    }
+  };
+
+
+
+  const TimestampChip = ({ iso }) => (
+    <View style={{
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.isDark ? '#0F172A' : '#DBEAFE',
+      borderWidth: 2,
+      borderColor: theme.isDark ? '#1E40AF' : '#93C5FD',
+      borderRadius: 18,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      shadowColor: theme.isDark ? '#000' : '#3B82F6',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 3,
+    }}>
+      <Text style={{ color: theme.isDark ? '#93C5FD' : '#1E40AF', fontWeight: '700', fontSize: 11 }}>
+        {formatDiaryTimestamp(iso)}
+      </Text>
+    </View>
+  );
+
+
+
   // 主題（深色/淺色/系統）
   const systemColorScheme = useColorScheme && useColorScheme();
   const isDarkTheme = settings.theme === 'dark' ? true : settings.theme === 'light' ? false : (systemColorScheme === 'dark');
@@ -149,6 +200,8 @@ export default function App() {
           text: '#EDEFF2',
           subText: '#B0BEC5',
           border: '#263238',
+          inputBg: '#2A2A2A',
+          placeholder: '#78909C',
         }
       : {
           background: '#FFFFFF',
@@ -157,6 +210,8 @@ export default function App() {
           text: '#333333',
           subText: '#666666',
           border: '#E3F2FD',
+          inputBg: '#FFFFFF',
+          placeholder: '#999999',
         },
   };
   const [exportData, setExportData] = useState('');
@@ -169,6 +224,10 @@ export default function App() {
     affectionGained: 0
   });
   const [petsWithRecords, setPetsWithRecords] = useState(new Set());
+  const [scheduledReminderId, setScheduledReminderId] = useState(null);
+
+
+
 
   // 寵物語錄觸發狀態
   const [petQuoteTriggered, setPetQuoteTriggered] = useState(false);
@@ -180,36 +239,26 @@ export default function App() {
     {
       id: 1,
       name: 'T系寵物',
-      personality: '穩重可靠',
-      description: '堅硬外殼為你阻擋一切',
       image: require('./B/T.png'),
     },
     {
       id: 2,
       name: 'R系寵物',
-      personality: '活潑可愛',
-      description: '表面呆萌，實則機靈爆棚',
       image: require('./B/R.png'),
     },
     {
       id: 3,
       name: 'P系寵物',
-      personality: '調皮有趣',
-      description: '表面在發呆，腦內在開派對',
       image: require('./B/P.png'),
     },
     {
       id: 4,
       name: 'D系寵物',
-      personality: '忠誠勇敢',
-      description: '是戰友也是朋友',
       image: require('./B/D.png'),
     },
     {
       id: 5,
       name: 'C系寵物',
-      personality: '神秘優雅',
-      description: '今天高冷，明天撒嬌，誰知道呢？',
       image: require('./B/C.png'),
     },
   ];
@@ -293,6 +342,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
+
         // 載入已選寵物
         const idText = await AsyncStorage.getItem(PERSIST_KEYS.currentPetId);
         const idNum = idText ? parseInt(idText, 10) : null;
@@ -310,8 +360,34 @@ export default function App() {
 
         // 檢查寵物遊玩紀錄
         await checkPetRecords();
+
+        // 載入日記歷史
+        const diaryJson = await AsyncStorage.getItem(PERSIST_KEYS.diaryEntries);
+        if (diaryJson) {
+          try {
+            const parsed = JSON.parse(diaryJson);
+            if (Array.isArray(parsed)) setDiaryEntries(parsed);
+          } catch (e) {}
+        }
+
+        // 載入最後領取日期
+        const lastClaimText = await AsyncStorage.getItem(PERSIST_KEYS.lastClaimDate);
+        if (lastClaimText) {
+          setLastClaimDate(lastClaimText);
+        }
+
+        // 載入冰冰幣
+        const iceCoinsText = await AsyncStorage.getItem(PERSIST_KEYS.iceCoins);
+        if (iceCoinsText) {
+          setIceCoins(parseInt(iceCoinsText, 10) || 0);
+        }
+
+        // 標記資料載入完成
+        setDataLoaded(true);
       } catch (e) {
         console.warn('load data error', e);
+        // 即使載入失敗，也要標記為完成，避免永遠不保存
+        setDataLoaded(true);
       }
     })();
   }, []);
@@ -327,32 +403,48 @@ export default function App() {
     })();
   }, [settings]);
 
-  // 根據提醒設定排程/取消每日提醒（若裝置已支援通知）
+  // 用於追蹤資料是否已載入完成
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  // 日記歷史變更時自動儲存（只有在資料載入完成後才保存）
   useEffect(() => {
-    const scheduleOrCancelReminder = async () => {
+    if (!dataLoaded) return; // 資料尚未載入完成，不要保存
+    
+    (async () => {
       try {
-        // 權限
-        const current = await Notifications.getPermissionsAsync();
-        let status = current.status;
-        if (status !== 'granted') {
-          const req = await Notifications.requestPermissionsAsync();
-          status = req.status;
-        }
-        // 先清掉舊的排程
-        await Notifications.cancelAllScheduledNotificationsAsync();
-        // 若開啟提醒且有權限，排程每天的通知
-        if (settings.reminderEnabled && status === 'granted') {
-          await Notifications.scheduleNotificationAsync({
-            content: { title: '記帳提醒', body: '該記帳囉！' },
-            trigger: { hour: settings.reminderHour || 20, minute: settings.reminderMinute || 0, repeats: true },
-          });
-        }
+        await AsyncStorage.setItem(PERSIST_KEYS.diaryEntries, JSON.stringify(diaryEntries));
       } catch (e) {
-        console.warn('notification scheduling skipped', e);
+        console.warn('save diary entries error', e);
       }
-    };
-    scheduleOrCancelReminder();
-  }, [settings.reminderEnabled, settings.reminderHour, settings.reminderMinute]);
+    })();
+  }, [diaryEntries, dataLoaded]);
+
+  // 最後領取日期變更時自動儲存
+  useEffect(() => {
+    if (lastClaimDate) {
+      (async () => {
+        try {
+          await AsyncStorage.setItem(PERSIST_KEYS.lastClaimDate, lastClaimDate);
+        } catch (e) {
+          console.warn('save last claim date error', e);
+        }
+      })();
+    }
+  }, [lastClaimDate]);
+
+  // 冰冰幣變更時自動儲存
+  useEffect(() => {
+    (async () => {
+      try {
+        await AsyncStorage.setItem(PERSIST_KEYS.iceCoins, iceCoins.toString());
+      } catch (e) {
+        console.warn('save ice coins error', e);
+      }
+    })();
+  }, [iceCoins]);
+
+  // 根據提醒設定排程/取消每日提醒（若裝置已支援通知）
+  // 提醒功能已移除
 
   // 首頁按鈕
   const menuButtons = [
@@ -364,15 +456,13 @@ export default function App() {
 
   const handlePetSelect = (pet) => {
     setSelectedPet(pet);
-    setCurrentScreen('detail');
+    setShowPetCare(true); // 直接進入養成頁面
     AsyncStorage.setItem(PERSIST_KEYS.currentPetId, String(pet.id)).catch(() => {});
     // 選擇寵物後，將其標記為有遊玩紀錄（如果用戶開始養成的話）
     setPetsWithRecords(prev => new Set([...prev, pet.id]));
   };
 
-  const handleBack = () => {
-    setCurrentScreen('home');
-  };
+
 
   // 檢查每日登入獎勵
   const checkDailyReward = () => {
@@ -386,12 +476,18 @@ export default function App() {
     }
   };
 
+  // 冰冰幣狀態（從 PetCareScreen 提升到 App 層級）
+  const [iceCoins, setIceCoins] = useState(0);
+
   // 領取每日登入獎勵
   const claimDailyReward = () => {
     const today = new Date().toDateString();
     setLastClaimDate(today);
     setDailyRewardClaimed(true);
     setShowDailyReward(false);
+    
+    // 實際增加 20 冰冰幣
+    setIceCoins(prev => prev + 20);
     
     Alert.alert(
       '🎉 領取成功！',
@@ -402,8 +498,21 @@ export default function App() {
 
   // 處理禮物箱按鈕點擊
   const handleGiftBox = () => {
+    const today = new Date().toDateString();
+    const lastClaim = lastClaimDate ? new Date(lastClaimDate).toDateString() : null;
+    
+    if (lastClaim === today) {
+      // 今日已領取，顯示提示訊息
+      Alert.alert(
+        '🎁 今日已領取',
+        '您今天已經領取過每日獎勵了！\n明天再來領取新的獎勵吧～',
+        [{ text: '確定', style: 'default' }]
+      );
+    } else {
+      // 尚未領取，顯示禮物箱
     checkDailyReward();
     setShowDailyReward(true);
+    }
   };
 
   // 處理日記本按鈕點擊
@@ -413,7 +522,14 @@ export default function App() {
 
   // 保存日記內容
   const saveDiary = (content) => {
-    setDiaryContent(content);
+    const text = (content || '').trim();
+    if (!text) {
+      Alert.alert('提示', t('diarySaveEmpty'));
+      return;
+    }
+    const entry = { id: Date.now(), content: text, createdAt: new Date().toISOString() };
+    setDiaryEntries(prev => [entry, ...prev]);
+    setDiaryContent('');
     setShowDiary(false);
   };
 
@@ -453,7 +569,7 @@ export default function App() {
   const renderHomeScreen = () => (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.header, { backgroundColor: theme.isDark ? '#0B1220' : '#F8FBFF', borderBottomColor: theme.colors.border }]}>
-        <Text style={[styles.appTitle, { color: '#1976D2' }]}>{t('appTitle')}</Text>
+        <Text style={styles.appTitle}>{t('appTitle')}</Text>
         <Text style={[styles.subtitle, { color: theme.colors.subText }]}>{t('subtitle')}</Text>
       </View>
 
@@ -479,8 +595,6 @@ export default function App() {
             />
             <View style={styles.petInfo}>
               <Text style={[styles.petName, { color: theme.colors.text }]}>{pet.name}</Text>
-              <Text style={[styles.petPersonality, { color: theme.isDark ? '#81D4FA' : '#1976D2' }]}>{pet.personality}</Text>
-              <Text style={[styles.petDescription, { color: theme.colors.subText }]}>{pet.description}</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#666" />
           </TouchableOpacity>
@@ -602,6 +716,36 @@ export default function App() {
         </View>
       </Modal>
 
+      {/* 日記內容檢視模態框 */}
+      <Modal
+        visible={showDiaryEntry}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowDiaryEntry(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.diaryModal, { backgroundColor: theme.colors.card }]}> 
+            <View style={styles.diaryHeader}>
+              <Text style={[styles.diaryTitle, { color: theme.isDark ? '#90CAF9' : '#1976D2' }]}>{t('diaryContentTitle')}</Text>
+              <TouchableOpacity onPress={() => setShowDiaryEntry(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.diaryContent}>
+              {selectedDiaryEntry ? (
+                <>
+                  <TimestampChip iso={selectedDiaryEntry.createdAt} />
+                  <View style={{ height: 10 }} />
+                  <Text style={{ color: theme.colors.text, fontSize: 14, lineHeight: 20 }}>
+                    {selectedDiaryEntry.content}
+                  </Text>
+                </>
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* 每日登入獎勵模態框 */}
       <Modal
         visible={showDailyReward}
@@ -694,6 +838,35 @@ export default function App() {
                 </TouchableOpacity>
               </View>
 
+              {/* 歷史紀錄按鈕（導向全螢幕頁面） */}
+              <View style={styles.diarySection}>
+                <TouchableOpacity 
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    alignSelf: 'flex-start',
+                    backgroundColor: theme.isDark ? '#581C87' : '#F3E8FF',
+                    borderWidth: 2,
+                    borderColor: theme.isDark ? '#8B5CF6' : '#C4B5FD',
+                    borderRadius: 20,
+                    paddingVertical: 10,
+                    paddingHorizontal: 16,
+                    shadowColor: theme.isDark ? '#000' : '#8B5CF6',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.2,
+                    shadowRadius: 4,
+                    elevation: 3,
+                  }}
+                  onPress={() => { setShowDiary(false); setShowDiaryHistory(true); }}
+                >
+                  <Text style={{ 
+                    color: theme.isDark ? '#C4B5FD' : '#6B21A8', 
+                    fontWeight: '700', 
+                    fontSize: 14 
+                  }}>{t('diaryHistory')}</Text>
+                </TouchableOpacity>
+              </View>
+
               {/* 寵物語錄區塊 */}
               <View style={styles.diarySection}>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>🐾 寵物語錄</Text>
@@ -759,77 +932,6 @@ export default function App() {
             </View>
 
             <ScrollView style={{ padding: 20 }}>
-              {/* 一般設定 */}
-              <View style={styles.settingsSection}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>一般</Text>
-                <View style={styles.settingsRow}>
-                  <Text style={[styles.settingsLabel, { color: theme.colors.text }]}>提醒</Text>
-                  <Switch value={settings.reminderEnabled} onValueChange={(v) => setSettings(s => ({ ...s, reminderEnabled: v }))} />
-                </View>
-                {settings.reminderEnabled && (
-                  <View style={[styles.settingsRow, { alignItems: 'center' }]}>
-                    <Text style={[styles.settingsLabel, { color: theme.colors.text, marginRight: 12 }]}>提醒時間</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      {[7,9,12,18,20,21].map(h => (
-                        <TouchableOpacity
-                          key={h}
-                          onPress={() => {
-                            setSettings(s => ({ ...s, reminderHour: h, reminderMinute: 0 }));
-                            setCustomReminderText(`${String(h).padStart(2,'0')}:00`);
-                          }}
-                          style={[
-                            styles.choiceChip,
-                            settings.reminderHour === h && settings.reminderMinute === 0 && styles.choiceChipActive,
-                            { marginRight: 8, backgroundColor: theme.isDark ? '#263238' : '#F0F4F8', borderColor: theme.isDark ? '#455A64' : '#E0E0E0' }
-                          ]}
-                        >
-                          <Text style={[
-                            styles.choiceChipText,
-                            settings.reminderHour === h && settings.reminderMinute === 0 && styles.choiceChipTextActive,
-                            !(settings.reminderHour === h && settings.reminderMinute === 0) && { color: theme.colors.text }
-                          ]}>{h}:00</Text>
-                        </TouchableOpacity>
-                      ))}
-                      <View style={{ width: 10 }} />
-                      <TextInput
-                        style={{
-                          minWidth: 70,
-                          paddingVertical: 8,
-                          paddingHorizontal: 10,
-                          borderWidth: 1,
-                          borderColor: theme.isDark ? '#455A64' : '#E0E0E0',
-                          borderRadius: 12,
-                          color: theme.colors.text,
-                          backgroundColor: theme.isDark ? '#0B1220' : '#FFFFFF',
-                          textAlign: 'center',
-                        }}
-                        placeholder="HH:MM"
-                        placeholderTextColor={theme.isDark ? '#94A3B8' : '#999'}
-                        keyboardType="numeric"
-                        value={customReminderText}
-                        onChangeText={(t) => setCustomReminderText(t)}
-                        onEndEditing={() => {
-                          const m = customReminderText.match(/^(\d{1,2}):(\d{2})$/);
-                          if (m) {
-                            let hh = Math.max(0, Math.min(23, parseInt(m[1], 10)));
-                            let mm = Math.max(0, Math.min(59, parseInt(m[2], 10)));
-                            setSettings(s => ({ ...s, reminderHour: hh, reminderMinute: mm }));
-                            setCustomReminderText(`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`);
-                          } else {
-                            // 還原為目前設定
-                            setCustomReminderText(`${String(settings.reminderHour).padStart(2,'0')}:${String(settings.reminderMinute).padStart(2,'0')}`);
-                          }
-                        }}
-                      />
-                    </View>
-                  </View>
-                )}
-                <View style={styles.settingsRow}>
-                  <Text style={[styles.settingsLabel, { color: theme.colors.text }]}>推播通知</Text>
-                  <Switch value={settings.notificationsEnabled} onValueChange={(v) => setSettings(s => ({ ...s, notificationsEnabled: v }))} />
-                </View>
-              </View>
-
               {/* 外觀 */}
               <View style={styles.settingsSection}>
                 <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>外觀</Text>
@@ -856,35 +958,6 @@ export default function App() {
                 </View>
               </View>
 
-              {/* 語言 */}
-              <View style={styles.settingsSection}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>語言</Text>
-                <View style={{ flexDirection: 'row' }}>
-                  {[
-                    { code: 'zh-TW', label: '繁中' },
-                    { code: 'en', label: 'English' },
-                  ].map(opt => (
-                    <TouchableOpacity
-                      key={opt.code}
-                      onPress={() => setSettings(s => ({ ...s, language: opt.code }))}
-                      style={[
-                        styles.choiceChip,
-                        settings.language === opt.code && styles.choiceChipActive,
-                        { marginRight: 8, backgroundColor: theme.isDark ? '#263238' : '#F0F4F8', borderColor: theme.isDark ? '#455A64' : '#E0E0E0' }
-                      ]}
-                    >
-                      <Text style={[
-                        styles.choiceChipText,
-                        settings.language === opt.code && styles.choiceChipTextActive,
-                        !(settings.language === opt.code) && { color: theme.colors.text }
-                      ]}>
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
 
             </ScrollView>
           </View>
@@ -893,50 +966,7 @@ export default function App() {
     </SafeAreaView>
   );
 
-  const renderDetailScreen = () => (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#1976D2" />
-        </TouchableOpacity>
-        <Text style={styles.title}>角色詳細資訊</Text>
-      </View>
 
-      <View style={styles.detailContent}>
-        <Image 
-          source={selectedPet.image} 
-          style={styles.detailPetImage}
-          resizeMode="contain"
-          fadeDuration={200}
-          onError={(error) => console.log(`詳細頁面圖片載入失敗: ${selectedPet.name}`, error)}
-          onLoad={() => console.log(`詳細頁面圖片載入成功: ${selectedPet.name}`)}
-        />
-        <Text style={styles.detailPetName}>{selectedPet.name}</Text>
-        <Text style={styles.detailPersonality}>{selectedPet.personality}</Text>
-        <Text style={styles.detailDescription}>{selectedPet.description}</Text>
-        
-        <View style={styles.statusInfo}>
-          <Text style={styles.statusTitle}>初始狀態</Text>
-          <View style={styles.statusItem}>
-            <Text style={styles.statusLabel}>🍖 飢餓度</Text>
-            <Text style={styles.statusValue}>30%</Text>
-          </View>
-          <View style={styles.statusItem}>
-            <Text style={styles.statusLabel}>🧼 清潔度</Text>
-            <Text style={styles.statusValue}>30%</Text>
-          </View>
-          <View style={styles.statusItem}>
-            <Text style={styles.statusLabel}>💗 親密度</Text>
-            <Text style={styles.statusValue}>30%</Text>
-          </View>
-        </View>
-
-        <TouchableOpacity style={styles.startButton} onPress={() => setShowPetCare(true)}>
-          <Text style={styles.startButtonText}>開始養成</Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
-  );
 
   // 主要的應用程式邏輯
   if (showPetCare && selectedPet) {
@@ -952,10 +982,132 @@ export default function App() {
         setPetQuoteTriggered={setPetQuoteTriggered}
         isDarkTheme={theme.isDark}
         language={settings.language}
+        iceCoins={iceCoins}
+        setIceCoins={setIceCoins}
       />
     );
-  } else if (currentScreen === 'detail') {
-    return renderDetailScreen();
+  } else if (showDiaryHistory) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}> 
+        <View style={[styles.header, { backgroundColor: theme.isDark ? '#0B1220' : '#F8FBFF', borderBottomColor: theme.colors.border }]}> 
+          <TouchableOpacity onPress={() => setShowDiaryHistory(false)} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#1976D2" />
+          </TouchableOpacity>
+          <Text style={styles.title}>{t('diaryHistory')}</Text>
+        </View>
+
+        <ScrollView style={{ padding: 20 }}>
+          {diaryEntries.length === 0 ? (
+            <Text style={{ color: theme.colors.subText, textAlign: 'center', marginTop: 30 }}>{t('diaryNone')}</Text>
+          ) : (
+            diaryEntries.map(entry => (
+              <View key={entry.id} style={{
+                backgroundColor: theme.isDark ? '#0B1220' : '#F8FBFF',
+                borderWidth: 1,
+                borderColor: theme.isDark ? '#334155' : '#E3F2FD',
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 12,
+              }}>
+                <TimestampChip iso={entry.createdAt} />
+                <View style={{ height: 6 }} />
+                <Text style={{ color: theme.colors.text, marginBottom: 10 }} numberOfLines={3}>
+                  {entry.content}
+                </Text>
+                <View style={{ flexDirection: 'row' }}>
+                  <TouchableOpacity
+                    onPress={() => { setSelectedDiaryEntry(entry); setShowDiaryEntry(true); }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: theme.isDark ? '#0F172A' : '#DBEAFE',
+                      borderWidth: 2,
+                      borderColor: theme.isDark ? '#1E40AF' : '#93C5FD',
+                      borderRadius: 20,
+                      paddingVertical: 8,
+                      paddingHorizontal: 14,
+                      marginRight: 8,
+                      shadowColor: theme.isDark ? '#000' : '#3B82F6',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.2,
+                      shadowRadius: 4,
+                      elevation: 3,
+                    }}
+                  >
+                    <Text style={{ marginRight: 4, fontSize: 12 }}>👀</Text>
+                    <Text style={{ 
+                      color: theme.isDark ? '#93C5FD' : '#1E40AF', 
+                      fontWeight: '700', 
+                      fontSize: 12 
+                    }}>{t('viewDiary')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert('刪除確認', '確定要刪除此日記嗎？', [
+                        { text: '取消', style: 'cancel' },
+                        { text: t('delete'), style: 'destructive', onPress: () => setDiaryEntries(prev => prev.filter(e => e.id !== entry.id)) }
+                      ]);
+                    }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: theme.isDark ? '#7F1D1D' : '#FEE2E2',
+                      borderWidth: 2,
+                      borderColor: theme.isDark ? '#EF4444' : '#FECACA',
+                      borderRadius: 20,
+                      paddingVertical: 8,
+                      paddingHorizontal: 14,
+                      shadowColor: theme.isDark ? '#000' : '#EF4444',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.2,
+                      shadowRadius: 4,
+                      elevation: 3,
+                    }}
+                  >
+                    <Text style={{ marginRight: 4, fontSize: 12 }}>🗑️</Text>
+                    <Text style={{ 
+                      color: theme.isDark ? '#FECACA' : '#DC2626', 
+                      fontWeight: '700', 
+                      fontSize: 12 
+                    }}>{t('delete')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+        </ScrollView>
+
+        {/* 日記內容檢視模態框（歷史頁也可查看） */}
+        <Modal
+          visible={showDiaryEntry}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowDiaryEntry(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.diaryModal, { backgroundColor: theme.colors.card }]}> 
+              <View style={styles.diaryHeader}>
+                <Text style={[styles.diaryTitle, { color: theme.isDark ? '#90CAF9' : '#1976D2' }]}>{t('diaryContentTitle')}</Text>
+                <TouchableOpacity onPress={() => setShowDiaryEntry(false)}>
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.diaryContent}>
+                {selectedDiaryEntry ? (
+                  <>
+                    <TimestampChip iso={selectedDiaryEntry.createdAt} />
+                    <View style={{ height: 10 }} />
+                    <Text style={{ color: theme.colors.text, fontSize: 14, lineHeight: 20 }}>
+                      {selectedDiaryEntry.content}
+                    </Text>
+                  </>
+                ) : null}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      </SafeAreaView>
+    );
   } else {
     return renderHomeScreen();
   }
@@ -976,9 +1128,14 @@ const styles = StyleSheet.create({
   },
   appTitle: {
     fontSize: 32,
-    fontWeight: 'bold',
-    color: '#1976D2',
+    fontWeight: '700',
+    color: '#6366F1',          // 現代紫色
     marginBottom: 5,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+    textShadowColor: 'rgba(99, 102, 241, 0.15)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   subtitle: {
     fontSize: 16,
@@ -1033,16 +1190,7 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 5,
   },
-  petPersonality: {
-    fontSize: 14,
-    color: '#1976D2',
-    marginBottom: 5,
-  },
-  petDescription: {
-    fontSize: 12,
-    color: '#666',
-    lineHeight: 16,
-  },
+
   functionPanel: {
     backgroundColor: '#F0F8FF',
     padding: 20,
@@ -1081,35 +1229,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  detailContent: {
-    flex: 1,
-    alignItems: 'center',
-    padding: 20,
-  },
-  detailPetImage: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    marginBottom: 20,
-  },
-  detailPetName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  detailPersonality: {
-    fontSize: 16,
-    color: '#1976D2',
-    marginBottom: 10,
-  },
-  detailDescription: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 30,
-  },
+
   statusInfo: {
     width: '100%',
     backgroundColor: '#F8FBFF',
@@ -1168,15 +1288,7 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
   },
-  detailImagePlaceholder: {
-    width: 120,
-    height: 120,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1300,6 +1412,132 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 12,
+  },
+  sectionSubTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  settingsInputRow: {
+    marginBottom: 16,
+  },
+  settingsInput: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    backgroundColor: '#FFFFFF',
+  },
+  timePickerContainer: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    marginVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  timeDisplayContainer: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  timeDisplayText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  timePickerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  timeSliderContainer: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  timeSliderHeader: {
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  timeSliderTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#666',
+  },
+  timeSliderWrapper: {
+    position: 'relative',
+    width: '100%',
+  },
+  timeSlider: {
+    height: 140,
+    width: '100%',
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  centerIndicator: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '50%',
+    height: 48,
+    borderWidth: 2,
+    borderRadius: 8,
+    marginTop: -24,
+    backgroundColor: 'transparent',
+    opacity: 0.3,
+  },
+  timeSeparator: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    marginTop: 40,
+  },
+  timeSeparatorText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  timeOption: {
+    height: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    marginVertical: 0,
+    marginHorizontal: 6,
+  },
+  timeOptionActive: {
+    backgroundColor: '#2196F3',
+  },
+  timeOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  timeOptionTextActive: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
   exportBox: {
     backgroundColor: '#F8FBFF',
