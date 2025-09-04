@@ -24,17 +24,30 @@ import PetCareScreen from './PetCareScreen';
 export default function App() {
   const PERSIST_KEYS = {
     currentPetId: 'PERSIST_CURRENT_PET_ID',
+    petStatuses: 'PERSIST_PET_STATUSES',
     settings: 'PERSIST_APP_SETTINGS',
     diaryEntries: 'PERSIST_DIARY_ENTRIES',
     lastClaimDate: 'PERSIST_LAST_CLAIM_DATE',
     iceCoins: 'PERSIST_ICE_COINS',
+    savedMoney: 'PERSIST_SAVED_MONEY',
+    dreamPlans: 'PERSIST_DREAM_PLANS',
+    selectedDreamPlanId: 'PERSIST_SELECTED_DREAM_PLAN_ID',
+    transactions: 'PERSIST_TRANSACTIONS',
+    dailyCheckStatus: 'PERSIST_DAILY_CHECK_STATUS',
   };
 
   const [selectedPet, setSelectedPet] = useState(null);
+  const [petStatuses, setPetStatuses] = useState({});
+  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
+  const [showPetSelection, setShowPetSelection] = useState(false);
+  const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
   // 不再需要 imagesLoaded 狀態，直接顯示圖片
   // const [imagesLoaded, setImagesLoaded] = useState(false);
   const [showPetCare, setShowPetCare] = useState(false);
   const [showMyPets, setShowMyPets] = useState(false);
+  const [openAccountingFlag, setOpenAccountingFlag] = useState(false);
+  const [openSavingsFlag, setOpenSavingsFlag] = useState(false);
+  const [showSavingsPage, setShowSavingsPage] = useState(false);
   
   // 每日登入獎勵狀態
   const [showDailyReward, setShowDailyReward] = useState(false);
@@ -101,6 +114,14 @@ export default function App() {
       stat_affection: '親密度提升',
       settingsTitle: '⚙️ 設定',
       appearance: '外觀',
+      firstTimeTitle: '歡迎來到 Pet Q！',
+      firstTimeMessage: '請選擇一隻寵物作為你的起始夥伴',
+      welcomeTitle: '歡迎加入！',
+      welcomeMessage: '你選擇了我，我會陪你一起記帳和存錢！',
+      gotIt: '我知道了',
+      selectPet: '選擇這隻寵物',
+      accounting: '記帳',
+      savings: '存錢',
 
       theme_light: '淺色', theme_dark: '深色', theme_system: '跟隨系統',
     },
@@ -141,6 +162,14 @@ export default function App() {
       stat_affection: 'Affection Gained',
       settingsTitle: '⚙️ Settings',
       appearance: 'Appearance',
+      firstTimeTitle: 'Welcome to Pet Q!',
+      firstTimeMessage: 'Please choose a pet as your starting companion',
+      welcomeTitle: 'Welcome!',
+      welcomeMessage: 'You chose me! I will accompany you in budgeting and saving money!',
+      gotIt: 'Got it',
+      selectPet: 'Choose this pet',
+      accounting: 'Accounting',
+      savings: 'Savings',
 
       theme_light: 'Light', theme_dark: 'Dark', theme_system: 'System',
     },
@@ -346,10 +375,28 @@ export default function App() {
         // 載入已選寵物
         const idText = await AsyncStorage.getItem(PERSIST_KEYS.currentPetId);
         const idNum = idText ? parseInt(idText, 10) : null;
+        
         if (idNum) {
+          // 已有寵物，非第一次使用者
           const found = pets.find(p => p.id === idNum);
           if (found) setSelectedPet(found);
+          setIsFirstTimeUser(false);
+        } else {
+          // 第一次使用者，需要選擇起始寵物
+          setIsFirstTimeUser(true);
+          setShowPetSelection(true);
         }
+
+        // 載入寵物活躍狀態，且確保同時間只有一隻 active
+        const statusesText = await AsyncStorage.getItem(PERSIST_KEYS.petStatuses);
+        const loadedStatuses = statusesText ? JSON.parse(statusesText) : {};
+        const nextStatuses = {};
+        pets.forEach(p => { nextStatuses[p.id] = loadedStatuses[p.id] || 'idle'; });
+        if (idNum) {
+          Object.keys(nextStatuses).forEach(id => { if (parseInt(id, 10) !== idNum && nextStatuses[id] === 'active') nextStatuses[id] = 'idle'; });
+          nextStatuses[idNum] = 'active';
+        }
+        setPetStatuses(nextStatuses);
         
         // 載入設定
         const settingsJson = await AsyncStorage.getItem(PERSIST_KEYS.settings);
@@ -382,6 +429,45 @@ export default function App() {
           setIceCoins(parseInt(iceCoinsText, 10) || 0);
         }
 
+        // 載入存錢數據
+        const savedMoneyText = await AsyncStorage.getItem(PERSIST_KEYS.savedMoney);
+        if (savedMoneyText) {
+          setSavedMoney(parseInt(savedMoneyText, 10) || 0);
+        }
+
+        // 載入夢想計畫
+        const dreamPlansText = await AsyncStorage.getItem(PERSIST_KEYS.dreamPlans);
+        if (dreamPlansText) {
+          try {
+            const parsed = JSON.parse(dreamPlansText);
+            if (Array.isArray(parsed)) setDreamPlans(parsed);
+          } catch (e) {}
+        }
+
+        // 載入選中的夢想計畫ID
+        const selectedPlanText = await AsyncStorage.getItem(PERSIST_KEYS.selectedDreamPlanId);
+        if (selectedPlanText) {
+          setSelectedDreamPlanId(parseInt(selectedPlanText, 10) || null);
+        }
+
+        // 載入交易數據
+        const transactionsText = await AsyncStorage.getItem(PERSIST_KEYS.transactions);
+        if (transactionsText) {
+          try {
+            const parsed = JSON.parse(transactionsText);
+            if (Array.isArray(parsed)) setTransactions(parsed);
+          } catch (e) {}
+        }
+        
+        // 載入打卡狀態
+        const checkStatusText = await AsyncStorage.getItem(PERSIST_KEYS.dailyCheckStatus);
+        if (checkStatusText) {
+          try {
+            const parsed = JSON.parse(checkStatusText);
+            setDailyCheckStatus(parsed);
+          } catch (e) {}
+        }
+
         // 標記資料載入完成
         setDataLoaded(true);
       } catch (e) {
@@ -391,6 +477,19 @@ export default function App() {
       }
     })();
   }, []);
+
+  // 保存寵物活躍狀態
+  useEffect(() => {
+    (async () => {
+      try {
+        if (petStatuses && Object.keys(petStatuses).length > 0) {
+          await AsyncStorage.setItem(PERSIST_KEYS.petStatuses, JSON.stringify(petStatuses));
+        }
+      } catch (e) {
+        console.warn('save pet statuses error', e);
+      }
+    })();
+  }, [petStatuses]);
 
   // 設定變更時自動儲存
   useEffect(() => {
@@ -443,22 +542,177 @@ export default function App() {
     })();
   }, [iceCoins]);
 
+  // 存錢數據變更時自動儲存
+  useEffect(() => {
+    (async () => {
+      try {
+        await AsyncStorage.setItem(PERSIST_KEYS.savedMoney, savedMoney.toString());
+      } catch (e) {
+        console.warn('save savedMoney error', e);
+      }
+    })();
+  }, [savedMoney]);
+
+  // 夢想計畫變更時自動儲存
+  useEffect(() => {
+    if (!dataLoaded) return;
+    (async () => {
+      try {
+        await AsyncStorage.setItem(PERSIST_KEYS.dreamPlans, JSON.stringify(dreamPlans));
+      } catch (e) {
+        console.warn('save dreamPlans error', e);
+      }
+    })();
+  }, [dreamPlans, dataLoaded]);
+
+  // 當夢想計畫載入後，如果沒有選中計畫且有可用計畫，自動選擇第一個
+  useEffect(() => {
+    if (dreamPlans.length > 0 && !selectedDreamPlanId) {
+      setSelectedDreamPlanId(dreamPlans[0].id);
+    }
+  }, [dreamPlans, selectedDreamPlanId]);
+
+  // 選中的夢想計畫ID變更時自動儲存
+  useEffect(() => {
+    if (selectedDreamPlanId !== null) {
+      (async () => {
+        try {
+          await AsyncStorage.setItem(PERSIST_KEYS.selectedDreamPlanId, selectedDreamPlanId.toString());
+        } catch (e) {
+          console.warn('save selectedDreamPlanId error', e);
+        }
+      })();
+    }
+  }, [selectedDreamPlanId]);
+
+  // 交易數據變更時自動儲存
+  useEffect(() => {
+    if (!dataLoaded) return;
+    (async () => {
+      try {
+        await AsyncStorage.setItem(PERSIST_KEYS.transactions, JSON.stringify(transactions));
+      } catch (e) {
+        console.warn('save transactions error', e);
+      }
+    })();
+  }, [transactions, dataLoaded]);
+  
+  // 冰冰幣變更時自動儲存
+  useEffect(() => {
+    if (!dataLoaded) return;
+    (async () => {
+      try {
+        await AsyncStorage.setItem(PERSIST_KEYS.iceCoins, iceCoins.toString());
+      } catch (e) {
+        console.warn('save iceCoins error', e);
+      }
+    })();
+  }, [iceCoins, dataLoaded]);
+  
+  // 打卡狀態變更時自動儲存
+  useEffect(() => {
+    if (!dataLoaded) return;
+    (async () => {
+      try {
+        await AsyncStorage.setItem(PERSIST_KEYS.dailyCheckStatus, JSON.stringify(dailyCheckStatus));
+      } catch (e) {
+        console.warn('save dailyCheckStatus error', e);
+      }
+    })();
+  }, [dailyCheckStatus, dataLoaded]);
+  
+  // 監聽交易和日記變更，更新打卡狀態
+  useEffect(() => {
+    if (dataLoaded) {
+      checkAndResetDailyStatus();
+    }
+  }, [transactions, diaryEntries, dataLoaded]);
+
   // 根據提醒設定排程/取消每日提醒（若裝置已支援通知）
   // 提醒功能已移除
 
   // 首頁按鈕
   const menuButtons = [
     { id: 1, key: 'myPets', icon: '🐾', color: '#FF6B6B' },
+    { id: 2, key: 'accounting', icon: '📊', color: '#87CEEB' },
+    { id: 3, key: 'savings', icon: '💰', color: '#98FB98' },
     { id: 4, key: 'gift', icon: '🎁', color: '#96CEB4' },
     { id: 5, key: 'diary', icon: '📝', color: '#FFEAA7' },
     { id: 8, key: 'settings', icon: '⚙️', color: '#F7DC6F' },
   ];
 
   const handlePetSelect = (pet) => {
+    // 確保同時間只有一隻 active
+    setPetStatuses(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(id => {
+        if (parseInt(id, 10) !== pet.id && next[id] === 'active') {
+          next[id] = 'idle';
+        }
+      });
+      next[pet.id] = 'active';
+      return next;
+    });
+
     setSelectedPet(pet);
     setShowPetCare(true); // 直接進入養成頁面
     AsyncStorage.setItem(PERSIST_KEYS.currentPetId, String(pet.id)).catch(() => {});
     // 選擇寵物後，將其標記為有遊玩紀錄（如果用戶開始養成的話）
+    setPetsWithRecords(prev => new Set([...prev, pet.id]));
+  };
+
+  // 在毛小孩們功能中的寵物切換邏輯
+  const handlePetSwitch = (pet) => {
+    const currentStatus = petStatuses[pet.id] || 'idle';
+    
+    if (currentStatus === 'active') {
+      // 如果已經是活躍狀態，進入養成頁面
+      setShowMyPets(false);
+      setShowPetCare(true);
+    } else {
+      // 如果不是活躍狀態，只切換為活躍，不進入養成頁面
+      setPetStatuses(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(id => {
+          if (parseInt(id, 10) !== pet.id && next[id] === 'active') {
+            next[id] = 'idle';
+          }
+        });
+        next[pet.id] = 'active';
+        return next;
+      });
+
+      setSelectedPet(pet);
+      AsyncStorage.setItem(PERSIST_KEYS.currentPetId, String(pet.id)).catch(() => {});
+      setPetsWithRecords(prev => new Set([...prev, pet.id]));
+      
+      // 顯示提示訊息
+      Alert.alert(
+        '切換成功',
+        `${pet.name} 現在是您的活躍寵物！\n點擊「前往養成」按鈕開始互動。`,
+        [{ text: '確定', style: 'default' }]
+      );
+    }
+  };
+
+  // 第一次使用者選擇起始寵物
+  const handleFirstTimePetSelect = (pet) => {
+    // 設置寵物狀態：選中的為 active，其他為 idle
+    const newStatuses = {};
+    pets.forEach(p => {
+      newStatuses[p.id] = p.id === pet.id ? 'active' : 'idle';
+    });
+    setPetStatuses(newStatuses);
+    
+    setSelectedPet(pet);
+    setIsFirstTimeUser(false);
+    setShowPetSelection(false);
+    AsyncStorage.setItem(PERSIST_KEYS.currentPetId, String(pet.id)).catch(() => {});
+    
+    // 顯示歡迎對話框
+    setShowWelcomeDialog(true);
+    
+    // 選擇寵物後，將其標記為有遊玩紀錄
     setPetsWithRecords(prev => new Set([...prev, pet.id]));
   };
 
@@ -478,6 +732,91 @@ export default function App() {
 
   // 冰冰幣狀態（從 PetCareScreen 提升到 App 層級）
   const [iceCoins, setIceCoins] = useState(0);
+  
+  // 存錢相關狀態
+  const [savedMoney, setSavedMoney] = useState(0);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [dreamPlans, setDreamPlans] = useState([]);
+  const [selectedDreamPlanId, setSelectedDreamPlanId] = useState(null);
+  
+  // 記帳相關狀態
+  const [showAccountingPage, setShowAccountingPage] = useState(false);
+  const [transactions, setTransactions] = useState([]);
+  const [amountInput, setAmountInput] = useState('');
+  const [transactionType, setTransactionType] = useState('expense');
+  const [transactionCategory, setTransactionCategory] = useState('餐飲');
+  const [transactionNote, setTransactionNote] = useState('');
+  
+  // 打卡狀態管理
+  const [dailyCheckStatus, setDailyCheckStatus] = useState({
+    accounting: false,
+    diary: false,
+    lastResetDate: new Date().toDateString(),
+  });
+  
+  // 檢查並重置每日打卡狀態
+  const checkAndResetDailyStatus = () => {
+    const today = new Date().toDateString();
+    const todayAccountingTransactions = transactions.filter(tx => 
+      new Date(tx.date).toDateString() === today
+    );
+    const todayDiaryEntries = diaryEntries.filter(entry => 
+      new Date(entry.createdAt).toDateString() === today
+    );
+    
+    // 調試信息
+    console.log('=== 打卡狀態檢查 ===');
+    console.log('今天日期:', today);
+    console.log('今日記帳筆數:', todayAccountingTransactions.length);
+    console.log('今日日記筆數:', todayDiaryEntries.length);
+    console.log('所有日記條目:', diaryEntries.map(entry => ({
+      id: entry.id,
+      createdAt: entry.createdAt,
+      dateString: new Date(entry.createdAt).toDateString()
+    })));
+    
+    setDailyCheckStatus(prev => {
+      const newStatus = {
+        accounting: todayAccountingTransactions.length > 0,
+        diary: todayDiaryEntries.length > 0,
+        lastResetDate: today,
+      };
+      
+      console.log('新的打卡狀態:', newStatus);
+      
+      if (prev.lastResetDate !== today) {
+        // 新的一天，重置狀態
+        return newStatus;
+      } else {
+        // 同一天，更新狀態
+        return {
+          ...prev,
+          accounting: todayAccountingTransactions.length > 0,
+          diary: todayDiaryEntries.length > 0,
+        };
+      }
+    });
+  };
+  
+  // 記帳類別數據（與PetCareScreen保持一致）
+  const accountingCategories = [
+    { id: '餐飲', icon: '🍱', desc: '餐廳、飲料、食材', color: '#FFB5BA', type: 'expense' },
+    { id: '交通', icon: '🚌', desc: '公車、捷運、計程車', color: '#AEC6CF', type: 'expense' },
+    { id: '日用品', icon: '🧺', desc: '生活用品、清潔、雜貨', color: '#B4CFB0', type: 'expense' },
+    { id: '購物', icon: '🛍️', desc: '衣服、配件、電子產品', color: '#FF80AB', type: 'expense' },
+    { id: '房貸', icon: '🏦', desc: '房貸、租金、管理費', color: '#64B5F6', type: 'expense' },
+    { id: '娛樂', icon: '🎪', desc: '電影、遊戲、休閒', color: '#FFB347', type: 'expense' },
+    { id: '醫療', icon: '🏥', desc: '門診、藥品、保健', color: '#98C1D9', type: 'expense' },
+    { id: '寵物', icon: '🐰', desc: '飼料、玩具、美容', color: '#DDA0DD', type: 'expense' },
+    { id: '學習', icon: '📚', desc: '課程、書籍、文具', color: '#4DB6AC', type: 'expense' },
+    { id: '旅行', icon: '✈️', desc: '機票、住宿、行程', color: '#FFB74D', type: 'expense' },
+    { id: '其他支出', icon: '📝', desc: '其他支出項目', color: '#F0E68C', type: 'expense' },
+    { id: '工資', icon: '💰', desc: '月薪、時薪、加班費', color: '#90CAF9', type: 'income' },
+    { id: '獎金', icon: '✨', desc: '年終、績效、各項獎金', color: '#FFD700', type: 'income' },
+    { id: '投資', icon: '📈', desc: '股票、基金、定存利息', color: '#81C784', type: 'income' },
+    { id: '中獎', icon: '🎰', desc: '彩券、抽獎、禮品', color: '#FF8A65', type: 'income' },
+    { id: '其他收入', icon: '💎', desc: '其他收入來源', color: '#78909C', type: 'income' },
+  ];
 
   // 領取每日登入獎勵
   const claimDailyReward = () => {
@@ -531,6 +870,77 @@ export default function App() {
     setDiaryEntries(prev => [entry, ...prev]);
     setDiaryContent('');
     setShowDiary(false);
+    
+    // 立即觸發打卡狀態檢查
+    setTimeout(() => {
+      checkAndResetDailyStatus();
+    }, 100);
+  };
+
+  // 記帳功能處理函數
+  const handleAddTransaction = () => {
+    const amount = parseInt(amountInput, 10);
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('❌ 記帳失敗', '請輸入有效的金額！');
+      return;
+    }
+    if (amount > 99999999) {
+      Alert.alert('❌ 記帳失敗', '金額最多 8 位數（上限 99,999,999）');
+      return;
+    }
+
+    const newTransaction = {
+      id: Date.now(),
+      type: transactionType,
+      category: transactionCategory,
+      amount: amount,
+      note: transactionNote.trim(),
+      date: new Date().toISOString(),
+    };
+
+    setTransactions(prev => [newTransaction, ...prev]);
+    
+    // 記帳冰冰幣獎勵機制（與PetCareScreen保持一致）
+    setIceCoins(prev => prev + 2);
+    
+    // 重置輸入
+    setAmountInput('');
+    setTransactionNote('');
+    
+    Alert.alert('💰 記帳成功！', `已記錄 ${transactionType === 'expense' ? '支出' : '收入'} ${amount} 元\n🎉 獲得 2 冰冰幣獎勵！`, [{ text: '確定', style: 'default' }]);
+  };
+
+  // 存錢功能處理函數
+  const handleSaveMoney = (amount) => {
+    if (amount <= 0) {
+      Alert.alert('❌ 存錢失敗', '請輸入大於 0 的金額！');
+      return;
+    }
+    if (amount > 99999999) {
+      Alert.alert('❌ 存錢失敗', '存入金額最多 8 位數（上限 99,999,999）');
+      return;
+    }
+    
+    // 必須選擇夢想計畫
+    if (!selectedDreamPlanId) {
+      Alert.alert('❌ 存錢失敗', '請先選擇一個夢想計畫！');
+      return;
+    }
+    
+    // 更新計畫進度
+    setDreamPlans(prev => prev.map(plan => {
+      if (plan.id === selectedDreamPlanId) {
+        const nextCurrent = (plan.current || 0) + amount;
+        return { ...plan, current: nextCurrent };
+      }
+      return plan;
+    }));
+    
+    const selectedPlan = dreamPlans.find(p => p.id === selectedDreamPlanId);
+    const planTitle = selectedPlan ? selectedPlan.title : '';
+    setSavedMoney(prev => prev + amount);
+    setDepositAmount('');
+    Alert.alert('💰 存錢成功！', `已存入 ${amount} 元至「${planTitle}」`, [{ text: '確定', style: 'default' }]);
   };
 
   // 生成今日寵物語錄
@@ -573,32 +983,120 @@ export default function App() {
         <Text style={[styles.subtitle, { color: theme.colors.subText }]}>{t('subtitle')}</Text>
       </View>
 
-      <ScrollView style={styles.petList} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>選擇你的寵物夥伴</Text>
-        {pets.map((pet) => (
-          <TouchableOpacity
-            key={pet.id}
-            style={styles.petCard}
-            onPress={() => handlePetSelect(pet)}
-          >
-            <Image 
-              source={pet.image} 
-              style={styles.petImage}
-              resizeMode="contain"
-              fadeDuration={200}
-              onError={(error) => {
-                console.log(`圖片載入失敗: ${pet.name}`, error);
-              }}
-              onLoad={() => {
-                console.log(`圖片載入成功: ${pet.name}`);
-              }}
-            />
-            <View style={styles.petInfo}>
-              <Text style={[styles.petName, { color: theme.colors.text }]}>{pet.name}</Text>
+      <ScrollView style={styles.homeContent} showsVerticalScrollIndicator={false}>
+        
+        {/* 上方：活躍寵物展示 */}
+        {selectedPet && !isFirstTimeUser && (
+          <View style={styles.activePetSection}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>我的寵物夥伴</Text>
+            <TouchableOpacity
+              style={[styles.currentPetCard, styles.activePetCard]}
+              onPress={() => setShowPetCare(true)}
+            >
+              <Image 
+                source={selectedPet.image} 
+                style={styles.currentPetImage}
+                resizeMode="contain"
+              />
+              <View style={styles.currentPetInfo}>
+                <Text style={[styles.currentPetName, { color: theme.colors.text }]}>{selectedPet.name}</Text>
+                <View style={[
+                  styles.statusBadge,
+                  { backgroundColor: '#4CAF50' }
+                ]}>
+                  <Text style={styles.statusText}>活躍中</Text>
+                </View>
+                <Text style={[styles.currentPetSubtitle, { color: theme.colors.subText }]}>
+                  點擊進入養成頁面
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={28} color={theme.colors.text} />
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {/* 中間：打卡狀態和夢想存錢進度條 */}
+        <View style={styles.middleSection}>
+          {/* 打卡狀態 */}
+          <View style={[styles.checkInSection, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.checkInTitle, { color: theme.colors.text }]}>今日打卡</Text>
+            <View style={styles.checkInRow}>
+              <View style={styles.checkInItem}>
+                <View style={[styles.checkInIcon, dailyCheckStatus.accounting && styles.checkInIconActive]}>
+                  <Text style={styles.checkInEmoji}>📊</Text>
+                  {dailyCheckStatus.accounting && <Text style={styles.checkMark}>✓</Text>}
+                </View>
+                <Text style={[styles.checkInLabel, { color: theme.colors.text }]}>記帳</Text>
+              </View>
+              <View style={styles.checkInItem}>
+                <View style={[styles.checkInIcon, dailyCheckStatus.diary && styles.checkInIconActive]}>
+                  <Text style={styles.checkInEmoji}>📝</Text>
+                  {dailyCheckStatus.diary && <Text style={styles.checkMark}>✓</Text>}
+                </View>
+                <Text style={[styles.checkInLabel, { color: theme.colors.text }]}>日記</Text>
+              </View>
             </View>
-            <Ionicons name="chevron-forward" size={24} color="#666" />
-          </TouchableOpacity>
-        ))}
+          </View>
+          
+          {/* 夢想存錢進度條 */}
+          {dreamPlans.length > 0 && (
+            <View style={[styles.progressSection, { backgroundColor: theme.colors.card }]}>
+              <Text style={[styles.progressTitle, { color: theme.colors.text }]}>夢想存錢進度</Text>
+              {dreamPlans.slice(0, 2).map((plan) => {
+                const progress = plan.target > 0 ? (plan.current || 0) / plan.target : 0;
+                return (
+                  <View key={plan.id} style={styles.progressItem}>
+                    <View style={styles.progressHeader}>
+                      <Text style={[styles.progressPlanName, { color: theme.colors.text }]}>{plan.name}</Text>
+                      <Text style={[styles.progressAmount, { color: theme.colors.subText }]}>
+                        ${plan.current || 0} / ${plan.target}
+                      </Text>
+                    </View>
+                    <View style={styles.progressBarContainer}>
+                      <View 
+                        style={[styles.progressBar, { width: `${Math.min(progress * 100, 100)}%` }]}
+                      />
+                    </View>
+                    <Text style={[styles.progressPercent, { color: theme.colors.subText }]}>
+                      {(progress * 100).toFixed(0)}%
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
+        {/* 第一次使用者或無寵物：顯示選擇介面 */}
+        {(!selectedPet || isFirstTimeUser) && (
+          <View style={styles.petSelectionSection}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>選擇你的寵物夥伴</Text>
+            {pets.map((pet) => (
+              <TouchableOpacity
+                key={pet.id}
+                style={styles.petCard}
+                onPress={() => handlePetSelect(pet)}
+              >
+                <Image 
+                  source={pet.image} 
+                  style={styles.petImage}
+                  resizeMode="contain"
+                  fadeDuration={200}
+                  onError={(error) => {
+                    console.log(`圖片載入失敗: ${pet.name}`, error);
+                  }}
+                  onLoad={() => {
+                    console.log(`圖片載入成功: ${pet.name}`);
+                  }}
+                />
+                <View style={styles.petInfo}>
+                  <Text style={[styles.petName, { color: theme.colors.text }]}>{pet.name}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={24} color="#666" />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       {/* 功能面板 */}
@@ -623,6 +1121,18 @@ export default function App() {
                   } else if (key === 'diary') {
                     console.log('執行日記本功能');
                     handleDiary();
+                  } else if (key === 'accounting') {
+                    if (!selectedPet) {
+                      Alert.alert('提示', '請先選擇一隻寵物');
+                      return;
+                    }
+                    setShowAccountingPage(true);
+                  } else if (key === 'savings') {
+                    if (!selectedPet) {
+                      Alert.alert('提示', '請先選擇一隻寵物');
+                      return;
+                    }
+                    setShowSavingsPage(true);
                   } else if (key === 'myPets') {
                     if (selectedPet) {
                       setShowMyPets(true);
@@ -637,6 +1147,8 @@ export default function App() {
                 <Text style={[styles.buttonIcon, theme.isDark && { color: '#EDEFF2' }]}>{button.icon}</Text>
                 <Text style={[styles.buttonText, { color: theme.colors.text }]}>
                   {button.key === 'myPets' ? t('menu_myPets')
+                    : button.key === 'accounting' ? t('accounting')
+                    : button.key === 'savings' ? t('savings')
                     : button.key === 'gift' ? t('menu_gift')
                     : button.key === 'diary' ? t('menu_diary')
                     : t('menu_settings')}
@@ -680,37 +1192,60 @@ export default function App() {
                 )}
               </View>
 
-              {petsWithRecords.size > 0 && (
-                <>
-                  <Text style={{ fontSize: 14, color: theme.colors.subText, marginBottom: 8 }}>切換夥伴</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={{ flexDirection: 'row', gap: 12 }}>
-                      {pets.filter(p => petsWithRecords.has(p.id)).map((p) => (
-                        <TouchableOpacity
-                          key={p.id}
-                          onPress={() => { setSelectedPet(p); AsyncStorage.setItem('PERSIST_CURRENT_PET_ID', String(p.id)).catch(() => {}); }}
-                          style={{
-                            alignItems: 'center',
-                            padding: 8,
-                            borderRadius: 12,
-                            borderWidth: selectedPet && selectedPet.id === p.id ? 2 : 1,
-                            borderColor: selectedPet && selectedPet.id === p.id ? '#1976D2' : '#E0E0E0',
-                            backgroundColor: '#FFFFFF',
-                          }}
-                        >
-                          <Image source={p.image} style={{ width: 64, height: 64, borderRadius: 10, marginBottom: 6 }} />
-                          <Text style={{ fontSize: 12, color: theme.colors.text }}>{p.name}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </ScrollView>
-                </>
-              )}
-              {petsWithRecords.size === 0 && (
-                <Text style={{ fontSize: 14, color: theme.colors.subText, textAlign: 'center', marginTop: 10 }}>
-                  尚無養成紀錄，選擇寵物開始養成吧！
-                </Text>
-              )}
+              <Text style={{ fontSize: 14, color: theme.colors.subText, marginBottom: 8 }}>選擇其他寵物</Text>
+              <ScrollView style={{ maxHeight: 300 }}>
+                {pets.map((pet) => {
+                  const petStatus = petStatuses[pet.id] || 'idle';
+                  const isActive = petStatus === 'active';
+                  const getStatusColor = (status) => {
+                    switch (status) {
+                      case 'active': return '#4CAF50'; // 綠色
+                      case 'idle': return '#9E9E9E'; // 灰色
+                      case 'graduated': return '#FF9800'; // 橙色
+                      case 'collected': return '#2196F3'; // 藍色
+                      default: return '#9E9E9E';
+                    }
+                  };
+                  const getStatusText = (status) => {
+                    switch (status) {
+                      case 'active': return '活躍中';
+                      case 'idle': return '閒置';
+                      case 'graduated': return '已畢業';
+                      case 'collected': return '收藏';
+                      default: return '閒置';
+                    }
+                  };
+                  
+                  return (
+                    <TouchableOpacity
+                      key={pet.id}
+                      onPress={() => handlePetSwitch(pet)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        padding: 12,
+                        borderRadius: 12,
+                        marginBottom: 8,
+                        borderWidth: 1,
+                        borderColor: isActive ? '#4CAF50' : theme.isDark ? '#455A64' : '#E0E0E0',
+                        backgroundColor: isActive ? '#E8F5E8' : theme.isDark ? '#263238' : '#FFFFFF',
+                      }}
+                    >
+                      <Image source={pet.image} style={{ width: 50, height: 50, borderRadius: 10, marginRight: 12 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: theme.colors.text }}>{pet.name}</Text>
+                        <View style={[
+                          styles.statusBadge,
+                          { backgroundColor: getStatusColor(petStatus), marginTop: 4 }
+                        ]}>
+                          <Text style={styles.statusText}>{getStatusText(petStatus)}</Text>
+                        </View>
+                      </View>
+                      {isActive && <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
           </View>
         </View>
@@ -928,8 +1463,8 @@ export default function App() {
               <Text style={[styles.diaryTitle, { color: theme.isDark ? '#90CAF9' : '#1976D2' }]}>⚙️ 設定</Text>
               <TouchableOpacity onPress={() => setShowSettings(false)}>
                 <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
+        </TouchableOpacity>
+      </View>
 
             <ScrollView style={{ padding: 20 }}>
               {/* 外觀 */}
@@ -955,10 +1490,424 @@ export default function App() {
                       </Text>
                     </TouchableOpacity>
                   ))}
+          </View>
+        </View>
+
+
+            </ScrollView>
+      </View>
+        </View>
+      </Modal>
+
+      {/* 存錢功能模態框 */}
+      <Modal
+        visible={showSavingsPage}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSavingsPage(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.diaryModal, { backgroundColor: theme.colors.card }]}>
+            <View style={styles.diaryHeader}>
+              <Text style={[styles.diaryTitle, { color: theme.isDark ? '#90CAF9' : '#1976D2' }]}>💰 存錢功能</Text>
+              <TouchableOpacity onPress={() => setShowSavingsPage(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.diaryContent}>
+              {/* 餘額顯示區塊 */}
+              <View style={styles.diarySection}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>💎 存錢功能</Text>
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: theme.isDark ? '#0B1220' : '#E3F2FD',
+                  borderRadius: 12,
+                  padding: 15,
+                  marginBottom: 15,
+                }}>
+                  <Ionicons name="wallet" size={22} color="#1976D2" />
+                  <Text style={{ 
+                    fontSize: 16, 
+                    fontWeight: 'bold', 
+                    color: theme.colors.text, 
+                    marginLeft: 8 
+                  }}>
+                    目前累積儲蓄：{savedMoney} 元
+                  </Text>
                 </View>
               </View>
 
+              {/* 夢想計畫選擇 */}
+              <View style={styles.diarySection}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>⭐ 選擇夢想計畫</Text>
+                {dreamPlans.length > 0 ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: 8, paddingBottom: 5 }}>
+                      {dreamPlans.map(plan => (
+                        <TouchableOpacity
+                          key={plan.id}
+                          onPress={() => setSelectedDreamPlanId(plan.id)}
+                          style={{
+                            paddingVertical: 8,
+                            paddingHorizontal: 12,
+                            borderRadius: 16,
+                            borderWidth: 1,
+                            borderColor: selectedDreamPlanId === plan.id ? '#1976D2' : '#E0E0E0',
+                            backgroundColor: selectedDreamPlanId === plan.id ? '#E3F2FD' : theme.isDark ? '#263238' : '#FFFFFF',
+                          }}
+                        >
+                          <Text style={{ 
+                            color: selectedDreamPlanId === plan.id ? '#1976D2' : theme.colors.text,
+                            fontSize: 12,
+                            fontWeight: selectedDreamPlanId === plan.id ? 'bold' : 'normal'
+                          }}>{plan.title}</Text>
+                          {plan.target && (
+                            <Text style={{ 
+                              color: theme.colors.subText, 
+                              fontSize: 10, 
+                              marginTop: 2 
+                            }}>
+                              {plan.current || 0}/{plan.target}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                ) : (
+                  <View style={{
+                    backgroundColor: theme.isDark ? '#7F1D1D' : '#FEE2E2',
+                    borderRadius: 12,
+                    padding: 15,
+                    borderWidth: 1,
+                    borderColor: theme.isDark ? '#EF4444' : '#FECACA',
+                  }}>
+                    <Text style={{ 
+                      color: theme.isDark ? '#FECACA' : '#DC2626',
+                      fontSize: 14,
+                      textAlign: 'center'
+                    }}>
+                      📝 尚未建立夢想計畫
+                    </Text>
+                    <Text style={{ 
+                      color: theme.isDark ? '#FCA5A5' : '#EF4444',
+                      fontSize: 12,
+                      textAlign: 'center',
+                      marginTop: 4
+                    }}>
+                      請先前往寵物頁面的「夢想存錢」功能建立計畫
+                    </Text>
+                  </View>
+                )}
+              </View>
 
+              {/* 存入金額區塊 */}
+              <View style={styles.diarySection}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>💰 存入功能</Text>
+                {selectedDreamPlanId && (
+                  <Text style={{ 
+                    fontSize: 14, 
+                    color: theme.colors.subText, 
+                    marginBottom: 8 
+                  }}>
+                    將存入：{dreamPlans.find(p => p.id === selectedDreamPlanId)?.title || ''}
+                  </Text>
+                )}
+                <View style={[styles.diaryInputContainer, theme.isDark && { backgroundColor: '#0B1220', borderColor: '#334155' }]}>
+                  <TextInput
+                    style={[styles.diaryInput, { color: theme.colors.text, minHeight: 50 }]}
+                    placeholder="輸入存入金額"
+                    keyboardType="numeric"
+                    value={depositAmount}
+                    onChangeText={(t) => {
+                      const digits = t.replace(/[^0-9]/g,'');
+                      if (digits.length > 8) {
+                        Alert.alert('❌ 金額過大', '存入金額最多 8 位數（上限 99,999,999）');
+                      }
+                      setDepositAmount(digits.slice(0,8));
+                    }}
+                    placeholderTextColor={theme.isDark ? '#94A3B8' : '#999'}
+                  />
+                </View>
+                <TouchableOpacity 
+                  style={[
+                    styles.saveButton,
+                    (!depositAmount || parseInt(depositAmount) <= 0 || !selectedDreamPlanId) && { backgroundColor: '#BDBDBD' }
+                  ]}
+                  onPress={() => handleSaveMoney(parseInt(depositAmount))}
+                  disabled={!depositAmount || parseInt(depositAmount) <= 0 || !selectedDreamPlanId}
+                >
+                  <Text style={styles.saveButtonText}>存入</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 記帳功能模態框 */}
+      <Modal
+        visible={showAccountingPage}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowAccountingPage(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.diaryModal, { backgroundColor: theme.colors.card }]}>
+            <View style={styles.diaryHeader}>
+              <Text style={[styles.diaryTitle, { color: theme.isDark ? '#90CAF9' : '#1976D2' }]}>📊 記帳功能</Text>
+              <TouchableOpacity onPress={() => setShowAccountingPage(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.diaryContent}>
+              {/* 金額輸入 */}
+              <View style={styles.diarySection}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>💰 輸入金額</Text>
+                <View style={[styles.diaryInputContainer, theme.isDark && { backgroundColor: '#0B1220', borderColor: '#334155' }]}>
+                  <TextInput
+                    style={[styles.diaryInput, { color: theme.colors.text, minHeight: 50 }]}
+                    placeholder="輸入金額"
+                    keyboardType="numeric"
+                    value={amountInput}
+                    onChangeText={(t) => {
+                      const digits = t.replace(/[^0-9]/g,'');
+                      if (digits.length > 8) {
+                        Alert.alert('❌ 金額過大', '金額最多 8 位數（上限 99,999,999）');
+                      }
+                      setAmountInput(digits.slice(0,8));
+                    }}
+                    placeholderTextColor={theme.isDark ? '#94A3B8' : '#999'}
+                  />
+                </View>
+              </View>
+
+              {/* 類型切換 */}
+              <View style={styles.diarySection}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>✨ 交易類型</Text>
+                <View style={{ flexDirection: 'row', gap: 15, justifyContent: 'center' }}>
+                  <TouchableOpacity 
+                    style={[
+                      styles.cuteTypeButton,
+                      {
+                        borderColor: transactionType === 'expense' ? '#FF6B6B' : '#FFE0E0',
+                        backgroundColor: transactionType === 'expense' 
+                          ? '#FF6B6B' 
+                          : theme.isDark ? '#1F2937' : '#FAFAFA',
+                        shadowColor: transactionType === 'expense' ? '#FF6B6B' : 'transparent',
+                        elevation: transactionType === 'expense' ? 8 : 2,
+                        transform: [{ scale: transactionType === 'expense' ? 1.05 : 1 }],
+                      }
+                    ]}
+                    onPress={() => {
+                      setTransactionType('expense');
+                      // 自動設定為支出類別
+                      const expenseCategories = accountingCategories.filter(cat => cat.type === 'expense');
+                      if (expenseCategories.length > 0) {
+                        setTransactionCategory(expenseCategories[0].id);
+                      }
+                    }}
+                  >
+                    <View style={styles.buttonIconContainer}>
+                      <Text style={styles.buttonEmoji}>💸</Text>
+                      <Text style={[
+                        styles.cuteButtonText,
+                        {
+                          color: transactionType === 'expense' ? '#FFFFFF' : theme.colors.text,
+                          textShadowColor: transactionType === 'expense' ? 'rgba(0,0,0,0.3)' : 'transparent',
+                          textShadowOffset: { width: 0, height: 1 },
+                          textShadowRadius: 2,
+                        }
+                      ]}>支出</Text>
+                      {transactionType === 'expense' && (
+                        <View style={styles.selectedIndicator}>
+                          <Text style={styles.checkMark}>✓</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[
+                      styles.cuteTypeButton,
+                      {
+                        borderColor: transactionType === 'income' ? '#10B981' : '#E0F2E0',
+                        backgroundColor: transactionType === 'income' 
+                          ? '#10B981' 
+                          : theme.isDark ? '#1F2937' : '#FAFAFA',
+                        shadowColor: transactionType === 'income' ? '#10B981' : 'transparent',
+                        elevation: transactionType === 'income' ? 8 : 2,
+                        transform: [{ scale: transactionType === 'income' ? 1.05 : 1 }],
+                      }
+                    ]}
+                    onPress={() => {
+                      setTransactionType('income');
+                      // 自動設定為收入類別
+                      const incomeCategories = accountingCategories.filter(cat => cat.type === 'income');
+                      if (incomeCategories.length > 0) {
+                        setTransactionCategory(incomeCategories[0].id);
+                      }
+                    }}
+                  >
+                    <View style={styles.buttonIconContainer}>
+                      <Text style={styles.buttonEmoji}>💰</Text>
+                      <Text style={[
+                        styles.cuteButtonText,
+                        {
+                          color: transactionType === 'income' ? '#FFFFFF' : theme.colors.text,
+                          textShadowColor: transactionType === 'income' ? 'rgba(0,0,0,0.3)' : 'transparent',
+                          textShadowOffset: { width: 0, height: 1 },
+                          textShadowRadius: 2,
+                        }
+                      ]}>收入</Text>
+                      {transactionType === 'income' && (
+                        <View style={styles.selectedIndicator}>
+                          <Text style={styles.checkMark}>✓</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* 類別選擇 */}
+              <View style={styles.diarySection}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>🏷️ 類別</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {accountingCategories
+                    .filter(cat => cat.type === transactionType)
+                    .map(cat => (
+                    <TouchableOpacity 
+                      key={cat.id}
+                      onPress={() => setTransactionCategory(cat.id)}
+                      style={{
+                        width: '30%',
+                        aspectRatio: 1,
+                        borderRadius: 10,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        marginBottom: 8,
+                        backgroundColor: cat.color,
+                        borderWidth: transactionCategory === cat.id ? 3 : 0,
+                        borderColor: '#1976D2',
+                      }}
+                    >
+                      <Text style={{ fontSize: 20, marginBottom: 4 }}>{cat.icon}</Text>
+                      <Text style={{ fontSize: 10, fontWeight: '600', color: '#333', textAlign: 'center' }}>{cat.id}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* 備註 */}
+              <View style={styles.diarySection}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>📝 備註（選填）</Text>
+                <View style={[styles.diaryInputContainer, theme.isDark && { backgroundColor: '#0B1220', borderColor: '#334155' }]}>
+                  <TextInput
+                    style={[styles.diaryInput, { color: theme.colors.text, minHeight: 50 }]}
+                    placeholder="輸入備註..."
+                    value={transactionNote}
+                    onChangeText={setTransactionNote}
+                    placeholderTextColor={theme.isDark ? '#94A3B8' : '#999'}
+                  />
+                </View>
+              </View>
+
+              {/* 新增按鈕 */}
+              <View style={styles.diarySection}>
+                <TouchableOpacity 
+                  style={[
+                    styles.cuteAddButton,
+                    {
+                      backgroundColor: (!amountInput || parseInt(amountInput) <= 0) 
+                        ? '#BDBDBD' 
+                        : (transactionType === 'expense' ? '#FF6B6B' : '#10B981'),
+                      shadowColor: (!amountInput || parseInt(amountInput) <= 0) 
+                        ? 'transparent' 
+                        : (transactionType === 'expense' ? '#FF6B6B' : '#10B981'),
+                      elevation: (!amountInput || parseInt(amountInput) <= 0) ? 2 : 8,
+                    }
+                  ]}
+                  onPress={handleAddTransaction}
+                  disabled={!amountInput || parseInt(amountInput) <= 0}
+                >
+                  <View style={styles.addButtonContent}>
+                    <Text style={styles.addButtonEmoji}>
+                      {transactionType === 'expense' ? '📤' : '📥'}
+                    </Text>
+                    <Text style={styles.cuteAddButtonText}>
+                      新增{transactionType === 'expense' ? '支出' : '收入'}
+                    </Text>
+                    <Text style={styles.addButtonSubtext}>
+                      💖 記錄每一筆交易
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* 交易歷史記錄 */}
+              {transactions.length > 0 && (
+                <View style={styles.diarySection}>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>📋 最近交易</Text>
+                  <View style={[styles.transactionHistory, theme.isDark && { backgroundColor: '#0B1220', borderColor: '#334155' }]}>
+                    {transactions.slice(0, 5).map((transaction, index) => {
+                      const category = accountingCategories.find(cat => cat.id === transaction.category);
+                      const isExpense = transaction.type === 'expense';
+                      return (
+                        <View key={transaction.id} style={[
+                          styles.transactionItem,
+                          index !== Math.min(4, transactions.length - 1) && styles.transactionItemBorder
+                        ]}>
+                          <View style={styles.transactionLeft}>
+                            <View style={[styles.transactionIcon, { backgroundColor: category?.color || '#E0E0E0' }]}>
+                              <Text style={styles.transactionIconText}>{category?.icon || '💰'}</Text>
+                            </View>
+                            <View style={styles.transactionInfo}>
+                              <Text style={[styles.transactionCategory, { color: theme.colors.text }]}>
+                                {transaction.category}
+                              </Text>
+                              {transaction.note && (
+                                <Text style={[styles.transactionNote, { color: theme.isDark ? '#94A3B8' : '#666' }]}>
+                                  {transaction.note.length > 20 ? transaction.note.substring(0, 20) + '...' : transaction.note}
+                                </Text>
+                              )}
+                              <Text style={[styles.transactionDate, { color: theme.isDark ? '#94A3B8' : '#999' }]}>
+                                {new Date(transaction.date).toLocaleDateString('zh-TW', { 
+                                  month: 'short', 
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={styles.transactionRight}>
+                            <Text style={[
+                              styles.transactionAmount,
+                              { color: isExpense ? '#EF4444' : '#10B981' }
+                            ]}>
+                              {isExpense ? '-' : '+'}${transaction.amount}
+                            </Text>
+                            <Text style={[styles.transactionType, { color: isExpense ? '#EF4444' : '#10B981' }]}>
+                              {isExpense ? '支出' : '收入'}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                    {transactions.length > 5 && (
+                      <View style={styles.moreTransactions}>
+                        <Text style={[styles.moreTransactionsText, { color: theme.isDark ? '#94A3B8' : '#666' }]}>
+                          還有 {transactions.length - 5} 筆交易...
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -973,7 +1922,11 @@ export default function App() {
     return (
       <PetCareScreen
         selectedPet={selectedPet}
-        onBack={() => setShowPetCare(false)}
+        onBack={() => {
+          setShowPetCare(false);
+          setOpenAccountingFlag(false);
+          setOpenSavingsFlag(false);
+        }}
         dailyRewardClaimed={dailyRewardClaimed}
         onDailyRewardClaimed={() => setDailyRewardClaimed(false)}
         todayStats={todayStats}
@@ -984,6 +1937,14 @@ export default function App() {
         language={settings.language}
         iceCoins={iceCoins}
         setIceCoins={setIceCoins}
+        openAccounting={openAccountingFlag}
+        openSavings={openSavingsFlag}
+        dreamPlans={dreamPlans}
+        setDreamPlans={setDreamPlans}
+        savedMoney={savedMoney}
+        setSavedMoney={setSavedMoney}
+        transactions={transactions}
+        setTransactions={setTransactions}
       />
     );
   } else if (showDiaryHistory) {
@@ -1109,7 +2070,75 @@ export default function App() {
       </SafeAreaView>
     );
   } else {
-    return renderHomeScreen();
+    return (
+      <>
+        {renderHomeScreen()}
+        
+        {/* 第一次使用者寵物選擇模態框 */}
+        <Modal
+          visible={showPetSelection}
+          transparent={false}
+          animationType="slide"
+        >
+          <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+            <View style={[styles.header, { backgroundColor: theme.isDark ? '#0B1220' : '#F8FBFF', borderBottomColor: theme.colors.border }]}>
+              <Text style={styles.appTitle}>{t('firstTimeTitle')}</Text>
+              <Text style={[styles.subtitle, { color: theme.colors.subText }]}>{t('firstTimeMessage')}</Text>
+            </View>
+            
+            <ScrollView style={styles.petList} showsVerticalScrollIndicator={false}>
+              {pets.map((pet) => (
+                <TouchableOpacity
+                  key={pet.id}
+                  style={[styles.petCard, styles.firstTimePetCard]}
+                  onPress={() => handleFirstTimePetSelect(pet)}
+                >
+                  <Image 
+                    source={pet.image} 
+                    style={styles.petImage}
+                    resizeMode="contain"
+                  />
+                  <View style={styles.petInfo}>
+                    <Text style={[styles.petName, { color: theme.colors.text }]}>{pet.name}</Text>
+                    <Text style={[styles.selectPetButton, { color: '#6366F1' }]}>
+                      {t('selectPet')}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={24} color="#6366F1" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+
+        {/* 歡迎對話框 */}
+        <Modal
+          visible={showWelcomeDialog}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowWelcomeDialog(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.welcomeModal, { backgroundColor: theme.colors.card }]}>
+              <View style={styles.welcomeContent}>
+                <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>
+                  {t('welcomeTitle')}
+                </Text>
+                <Text style={[styles.welcomeMessage, { color: theme.colors.subText }]}>
+                  {t('welcomeMessage')}
+                </Text>
+                <TouchableOpacity
+                  style={styles.welcomeButton}
+                  onPress={() => setShowWelcomeDialog(false)}
+                >
+                  <Text style={styles.welcomeButtonText}>{t('gotIt')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
   }
 }
 
@@ -1189,6 +2218,422 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 5,
+  },
+
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  statusText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  activePetCard: {
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    backgroundColor: '#E8F5E8',
+  },
+  currentPetCard: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FBFF',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    marginHorizontal: 15,
+    alignItems: 'center',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  currentPetImage: {
+    width: 80,
+    height: 80,
+    marginRight: 20,
+  },
+  currentPetInfo: {
+    flex: 1,
+  },
+  currentPetName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  currentPetSubtitle: {
+    fontSize: 14,
+    marginTop: 8,
+  },
+  firstTimePetCard: {
+    borderWidth: 2,
+    borderColor: '#6366F1',
+    backgroundColor: '#F0F0FF',
+  },
+  selectPetButton: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  welcomeModal: {
+    width: '85%',
+    borderRadius: 20,
+    padding: 25,
+    alignItems: 'center',
+  },
+  welcomeContent: {
+    alignItems: 'center',
+  },
+  welcomeTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  welcomeMessage: {
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'center',
+    marginBottom: 25,
+  },
+  welcomeButton: {
+    backgroundColor: '#6366F1',
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  welcomeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  
+  // 可愛按鈕樣式
+  cuteTypeButton: {
+    width: 120,
+    height: 80,
+    borderRadius: 20,
+    borderWidth: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  
+  buttonIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  buttonEmoji: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  
+  cuteButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  
+  selectedIndicator: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  
+  checkMark: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  
+  // 可愛新增按鈕樣式
+  cuteAddButton: {
+    borderRadius: 25,
+    paddingVertical: 18,
+    paddingHorizontal: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    marginTop: 10,
+  },
+  
+  addButtonContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  addButtonEmoji: {
+    fontSize: 22,
+    marginBottom: 6,
+  },
+  
+  cuteAddButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  
+  addButtonSubtext: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
+    opacity: 0.9,
+  },
+  
+  // 交易歷史記錄樣式
+  transactionHistory: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  
+  transactionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  
+  transactionItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  
+  transactionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  
+  transactionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  
+  transactionIconText: {
+    fontSize: 18,
+  },
+  
+  transactionInfo: {
+    flex: 1,
+  },
+  
+  transactionCategory: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  
+  transactionNote: {
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  
+  transactionDate: {
+    fontSize: 11,
+  },
+  
+  transactionRight: {
+    alignItems: 'flex-end',
+  },
+  
+  transactionAmount: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  
+  transactionType: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  
+  moreTransactions: {
+    paddingTop: 12,
+    alignItems: 'center',
+  },
+  
+  moreTransactionsText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  
+  // 新的首頁排版樣式
+  homeContent: {
+    flex: 1,
+  },
+  
+  activePetSection: {
+    padding: 20,
+  },
+  
+  middleSection: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  
+  petSelectionSection: {
+    padding: 20,
+  },
+  
+  // 打卡狀態樣式
+  checkInSection: {
+    borderRadius: 15,
+    padding: 20,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  
+  checkInTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  
+  checkInRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  
+  checkInItem: {
+    alignItems: 'center',
+  },
+  
+  checkInIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+    position: 'relative',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+  },
+  
+  checkInIconActive: {
+    backgroundColor: '#E8F5E8',
+    borderColor: '#4CAF50',
+  },
+  
+  checkInEmoji: {
+    fontSize: 24,
+  },
+  
+  checkMark: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#4CAF50',
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    width: 20,
+    height: 20,
+    textAlign: 'center',
+    lineHeight: 20,
+    borderRadius: 10,
+  },
+  
+  checkInLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  
+  // 夢想存錢進度條樣式
+  progressSection: {
+    borderRadius: 15,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  
+  progressTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  
+  progressItem: {
+    marginBottom: 15,
+  },
+  
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  
+  progressPlanName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  
+  progressAmount: {
+    fontSize: 14,
+  },
+  
+  progressBarContainer: {
+    height: 8,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 4,
+    marginBottom: 5,
+  },
+  
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+    borderRadius: 4,
+  },
+  
+  progressPercent: {
+    fontSize: 12,
+    textAlign: 'right',
   },
 
   functionPanel: {

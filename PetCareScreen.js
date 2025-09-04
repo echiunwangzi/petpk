@@ -32,7 +32,15 @@ export default function PetCareScreen({
   isDarkTheme,
   language,
   iceCoins,
-  setIceCoins
+  setIceCoins,
+  openAccounting,
+  openSavings,
+  dreamPlans: propDreamPlans,
+  setDreamPlans: setPropDreamPlans,
+  savedMoney: propSavedMoney,
+  setSavedMoney: setPropSavedMoney,
+  transactions: propTransactions,
+  setTransactions: setPropTransactions
 }) {
   // 持久化鍵值
   const PERSIST_KEYS = {
@@ -159,14 +167,18 @@ export default function PetCareScreen({
   const [showBackpack, setShowBackpack] = useState(false);
   const [showShop, setShowShop] = useState(false);
   const [showMyPets, setShowMyPets] = useState(false);
-  // 已拆分為 depositAmount / withdrawAmount
-  const [savedMoney, setSavedMoney] = useState(0);
+  // 已拆分為 depositAmount / withdrawAmount  
+  // 使用從 App.js 傳入的 savedMoney 狀態
+  const savedMoney = propSavedMoney || 0;
+  const setSavedMoney = setPropSavedMoney || (() => {});
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   
   // 記帳相關狀態（MVP）
   const [showAccounting, setShowAccounting] = useState(false);
-  const [transactions, setTransactions] = useState([]);
+  // 使用從 App.js 傳入的 transactions 狀態
+  const transactions = propTransactions || [];
+  const setTransactions = setPropTransactions || (() => {});
   const [amountInput, setAmountInput] = useState('');
   const [transactionType, setTransactionType] = useState('expense'); // 'expense' | 'income'
   const [transactionCategory, setTransactionCategory] = useState('餐飲');
@@ -202,6 +214,40 @@ export default function PetCareScreen({
   // 編輯相關狀態
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
+  
+  // 月份選擇相關狀態
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  
+  // 生成最近12個月的選項
+  const generateMonthOptions = () => {
+    const options = [];
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth(); // 0-11
+    
+    for (let i = 0; i < 12; i++) {
+      // 計算目標年份和月份
+      let targetYear = currentYear;
+      let targetMonth = currentMonth - i;
+      
+      // 處理跨年的情況
+      while (targetMonth < 0) {
+        targetMonth += 12;
+        targetYear -= 1;
+      }
+      
+      // 格式化月份字符串 (YYYY-MM)
+      const monthString = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`;
+      
+      // 創建顯示文字
+      const displayText = `${targetYear}年${targetMonth + 1}月`;
+      
+      options.push({ value: monthString, label: displayText });
+    }
+    return options;
+  };
+  
+  const monthOptions = generateMonthOptions();
   const [editAmount, setEditAmount] = useState('');
   const [editType, setEditType] = useState('expense');
   const [editCategory, setEditCategory] = useState('餐飲');
@@ -343,7 +389,9 @@ export default function PetCareScreen({
   const [allocationMode, setAllocationMode] = useState('auto'); // 'auto' | 'manual'
   const [selectedAllocationGoal, setSelectedAllocationGoal] = useState('shortTerm'); // 'shortTerm' | 'mediumTerm' | 'longTerm'
   const [goalEdits, setGoalEdits] = useState({});
-  const [dreamPlans, setDreamPlans] = useState([]);
+  // 使用從 App.js 傳入的 dreamPlans 狀態
+  const dreamPlans = propDreamPlans || [];
+  const setDreamPlans = setPropDreamPlans || (() => {});
   const [dreamForm, setDreamForm] = useState({ title: '', targetText: '', startDateText: '', endDateText: '' });
   const [selectedDreamPlanId, setSelectedDreamPlanId] = useState(null);
   const [selectedWithdrawDreamPlanId, setSelectedWithdrawDreamPlanId] = useState(null);
@@ -463,9 +511,6 @@ export default function PetCareScreen({
     (async () => {
       try {
         const entries = await AsyncStorage.multiGet([
-          PERSIST_KEYS.transactions,
-          PERSIST_KEYS.savedMoney,
-          PERSIST_KEYS.dreamPlans,
           PERSIST_KEYS.selectedDreamPlanId,
           PERSIST_KEYS.selectedWithdrawDreamPlanId,
           PERSIST_KEYS.petStatus,
@@ -482,15 +527,6 @@ export default function PetCareScreen({
           PERSIST_KEYS.showGoalEditPage,
         ]);
         const map = Object.fromEntries(entries);
-
-        const storedTransactions = safeParseJson(map[PERSIST_KEYS.transactions], null);
-        if (storedTransactions) setTransactions(storedTransactions);
-
-        const storedSavedMoney = safeParseJson(map[PERSIST_KEYS.savedMoney], null);
-        if (storedSavedMoney !== null) setSavedMoney(storedSavedMoney);
-
-        const storedDreamPlans = safeParseJson(map[PERSIST_KEYS.dreamPlans], null);
-        if (storedDreamPlans) setDreamPlans(storedDreamPlans);
 
         const storedSelectedDreamPlanId = safeParseJson(map[PERSIST_KEYS.selectedDreamPlanId], null);
         if (storedSelectedDreamPlanId) setSelectedDreamPlanId(storedSelectedDreamPlanId);
@@ -538,9 +574,6 @@ export default function PetCareScreen({
   }, []);
   
   // 狀態變更時儲存（財務相關）
-  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.transactions, transactions); }, [transactions]);
-  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.savedMoney, savedMoney); }, [savedMoney]);
-  useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.dreamPlans, dreamPlans); }, [dreamPlans]);
   useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.selectedDreamPlanId, selectedDreamPlanId); }, [selectedDreamPlanId]);
   useEffect(() => { if (hydratedRef.current) saveJson(PERSIST_KEYS.selectedWithdrawDreamPlanId, selectedWithdrawDreamPlanId); }, [selectedWithdrawDreamPlanId]);
 
@@ -567,6 +600,17 @@ export default function PetCareScreen({
     console.log('PetCareScreen 圖片載入完成');
     setImagesLoaded(true);
   }, []);
+
+  // 處理從首頁點擊記帳/存錢按鈕的自動開啟
+  useEffect(() => {
+    if (hydratedRef.current) {
+      if (openAccounting) {
+        setShowAccountingPage(true);
+      } else if (openSavings) {
+        setShowSavingsPage(true);
+      }
+    }
+  }, [openAccounting, openSavings]);
 
   // 檢查並重置每日計數器 - 每日00:00重置
   useEffect(() => {
@@ -1416,19 +1460,19 @@ export default function PetCareScreen({
       affection: Math.min(100, prev.affection + affectionDelta),
     }));
 
-    setBackpack(prev => ({
-      ...prev,
-      iceCoins: prev.iceCoins + 2,
-    }));
+    // 記帳冰冰幣獎勵（使用統一的iceCoins狀態）
+    setIceCoins(prev => prev + 2);
 
+    // 重置輸入
+    setAmountInput('');
+    setTransactionNote('');
+    
     setTodayStats(prev => ({
       ...prev,
       affectionGained: prev.affectionGained + affectionDelta,
     }));
-
-    // 重置輸入欄位
-    setAmountInput('');
-    setTransactionNote('');
+    
+    Alert.alert('💰 記帳成功！', `已記錄 ${transactionType === 'expense' ? '支出' : '收入'} ${amount} 元\n🎉 獲得 2 冰冰幣獎勵！`, [{ text: '確定', style: 'default' }]);
 
 
 
@@ -1869,9 +1913,12 @@ export default function PetCareScreen({
             <View style={styles.accountingSection}>
               <View style={styles.monthlyHeader}>
                 <Text style={[styles.sectionTitle, { color: themeColors.text }]}>{tt('monthlyReport')}</Text>
-                <TouchableOpacity style={styles.monthSelector}>
+                <TouchableOpacity 
+                  style={styles.monthSelector}
+                  onPress={() => setShowMonthPicker(true)}
+                >
                   <Text style={styles.monthSelectorText}>{selectedMonth.replace('-', '/')} ▾</Text>
-                  </TouchableOpacity>
+                </TouchableOpacity>
               </View>
 
               {(() => {
@@ -2061,6 +2108,52 @@ export default function PetCareScreen({
           </ScrollView>
         </View>
       )}
+
+      {/* 月份選擇器模態框 */}
+      <Modal
+        visible={showMonthPicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowMonthPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.monthPickerModal, { backgroundColor: themeColors.card }]}>
+            <View style={styles.monthPickerHeader}>
+              <Text style={[styles.monthPickerTitle, { color: themeColors.text }]}>選擇查看月份</Text>
+              <TouchableOpacity onPress={() => setShowMonthPicker(false)}>
+                <Ionicons name="close" size={24} color={themeColors.subText} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.monthPickerContent}>
+              {monthOptions.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.monthOption,
+                    selectedMonth === option.value && { backgroundColor: '#E3F2FD' }
+                  ]}
+                  onPress={() => {
+                    setSelectedMonth(option.value);
+                    setShowMonthPicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.monthOptionText,
+                    { color: themeColors.text },
+                    selectedMonth === option.value && { color: '#1976D2', fontWeight: '600' }
+                  ]}>
+                    {option.label}
+                  </Text>
+                  {selectedMonth === option.value && (
+                    <Ionicons name="checkmark" size={20} color="#1976D2" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* 編輯交易模態框 */}
       <Modal
@@ -3398,6 +3491,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 1000,
   },
   modal: {
     backgroundColor: 'white',
@@ -4635,6 +4729,51 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 20,
     elevation: 10,
+  },
+  
+  // 月份選擇器樣式
+  monthPickerModal: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    width: '85%',
+    maxHeight: '70%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  
+  monthPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  
+  monthPickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  
+  monthPickerContent: {
+    maxHeight: 400,
+  },
+  
+  monthOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
+  },
+  
+  monthOptionText: {
+    fontSize: 16,
   },
   noteInput: {
     backgroundColor: '#FFFFFF',
